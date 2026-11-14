@@ -22,6 +22,13 @@ const DANGEROUS_INSTRUCTION_PATTERNS = [
   /\b(mix\s+bleach\s+and\s+ammonia|toxic\s+gas\s+recipe|create\s+chlorine\s+gas)\b/i,
   /\b(hack\s+into|bypass\s+firewall|sql\s+injection\s+script|exploit\s+vulnerability)\b/i,
   /\b(steal\s+credit\s+card|counterfeit|phishing\s+template)\b/i,
+  /\b(take\s+(this|these|your)\s+(pills?|medicine|medication)|medical\s+diagnosis|call\s+911\s+for\s+treatment)\b/i,
+];
+
+const EXTERNAL_LINK_PATTERNS = [
+  /https?:\/\/[^\s]+/i,
+  /www\.[^\s]+/i,
+  /[a-zA-Z0-9-]+\.(com|org|net|io|co|xyz|ru|cn)\b/i,
 ];
 
 /**
@@ -123,6 +130,13 @@ export function reviewAiResponseSafety(rawText: string): SafetyReviewResult {
   for (const pattern of PII_SOLICITATION_PATTERNS) {
     if (pattern.test(trimmed)) {
       return { isSafe: false, reason: 'Response solicits personal identifiable information.' };
+    }
+  }
+
+  // 6. External link inspection (No external links in child-facing answers)
+  for (const pattern of EXTERNAL_LINK_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return { isSafe: false, reason: 'Response contains external URL links or domain references.' };
     }
   }
 

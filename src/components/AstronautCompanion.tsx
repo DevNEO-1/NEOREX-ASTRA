@@ -2,13 +2,17 @@ import React, { useState } from 'react';
 import { GameState } from '../simulator/types';
 import { LearningProfileTier, LEARNING_PROFILES } from '../simulator/learningProfiles';
 import { audioSystem } from '../utils/audioSystem';
+import { sendDrAstraMessage } from '../services/drAstraClient';
 import { 
   Sparkles, 
   X, 
   ChevronRight, 
   Volume2, 
   VolumeX, 
-  Lightbulb
+  Lightbulb,
+  Send,
+  Loader2,
+  Bot
 } from 'lucide-react';
 
 interface AstronautCompanionProps {
@@ -26,7 +30,25 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [customReply, setCustomReply] = useState<string | null>(null);
+  const [isLoadingAi, setIsLoadingAi] = useState(false);
   const profile = LEARNING_PROFILES[learningProfile];
+
+  const handleAskDrAstra = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isLoadingAi) return;
+
+    const question = chatInput.trim();
+    setIsLoadingAi(true);
+    audioSystem.playTelemetryClick();
+
+    const result = await sendDrAstraMessage(question, gameState, learningProfile);
+    setIsLoadingAi(false);
+    setChatInput('');
+    setCustomReply(result.response);
+    audioSystem.playUpgradeChime();
+  };
 
   // Dynamic context-sensitive message generation based on profile tier and live gameState
   const getCompanionDialogue = () => {
@@ -249,9 +271,54 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
           <span>{dialogue.title}</span>
         </h4>
 
-        <p className="text-xs text-slate-200 leading-relaxed font-sans">
-          {dialogue.message}
-        </p>
+        {/* Custom AI Question & Answer Display */}
+        {customReply ? (
+          <div className="p-3 rounded-xl bg-slate-950/90 border border-cyan-500/40 text-xs text-slate-200 space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                <Bot className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Dr. Astra (Gemini AI Guidance)</span>
+              </span>
+              <button
+                onClick={() => setCustomReply(null)}
+                className="text-[10px] text-slate-400 hover:text-white"
+              >
+                Clear
+              </button>
+            </div>
+            <p className="leading-relaxed font-sans">{customReply}</p>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-200 leading-relaxed font-sans">
+            {dialogue.message}
+          </p>
+        )}
+
+        {/* Ask Dr. Astra AI Input Bar */}
+        <form onSubmit={handleAskDrAstra} className="flex items-center gap-1.5 pt-1">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder={
+              learningProfile === 'junior'
+                ? "Ask Dr. Astra a space question..."
+                : learningProfile === 'cadet'
+                ? "Ask about water, power, oxygen, or crops..."
+                : "Query ECLSS telemetry, radiation, or systems..."
+            }
+            maxLength={300}
+            disabled={isLoadingAi}
+            className="flex-1 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-700 focus:border-cyan-500 text-xs text-white placeholder-slate-500 outline-none transition"
+          />
+          <button
+            type="submit"
+            disabled={isLoadingAi || !chatInput.trim()}
+            className="p-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-800 text-slate-950 disabled:text-slate-600 transition flex items-center justify-center shrink-0 shadow-sm"
+          >
+            {isLoadingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          </button>
+        </form>
 
         {/* Helpful Hint box */}
         <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-800/60 text-cyan-300 text-[11px] flex items-start gap-2">

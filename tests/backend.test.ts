@@ -552,4 +552,62 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
       expect(res.body.oxygenKg).toBeUndefined();
     });
   });
+
+  describe('Frontend Client Service & Safety Safeguards', () => {
+    it('builds clean, read-only simulation context from GameState', async () => {
+      const { buildReadOnlySimulationContext } = await import('../src/services/drAstraClient');
+      const { createInitialGameState } = await import('../src/simulator/campaign');
+
+      const fullState = createInitialGameState('moon');
+      const readOnlyCtx = buildReadOnlySimulationContext(fullState);
+
+      expect(readOnlyCtx.day).toBe(1);
+      expect(readOnlyCtx.totalDays).toBe(30);
+      expect(readOnlyCtx.resources.batteryKwh).toBe(fullState.resources.batteryKwh);
+      expect(readOnlyCtx.resources.oxygenKg).toBe(fullState.resources.oxygenKg);
+      expect(readOnlyCtx.resources.waterLitres).toBe(fullState.resources.waterLitres);
+      // Ensure private functions or non-serializable objects are not present
+      expect((readOnlyCtx as any).dailyHistory).toBeUndefined();
+      expect((readOnlyCtx as any).eventHistory).toBeUndefined();
+    });
+
+    it('provides offline deterministic safe fallbacks across each learning profile', async () => {
+      const { getLocalSafeFallback } = await import('../src/services/drAstraClient');
+      const { createInitialGameState } = await import('../src/simulator/campaign');
+      const state = createInitialGameState('moon');
+
+      // Junior Explorer
+      const juniorResp = getLocalSafeFallback('Why do we need oxygen?', state, 'junior');
+      expect(juniorResp.success).toBe(true);
+      expect(juniorResp.isFallback).toBe(true);
+      expect(juniorResp.ageTier).toBe('junior');
+      expect(juniorResp.response).toContain('Astronauts need oxygen to breathe');
+
+      // Space Cadet
+      const cadetResp = getLocalSafeFallback('How does water recycling work?', state, 'cadet');
+      expect(cadetResp.success).toBe(true);
+      expect(cadetResp.ageTier).toBe('cadet');
+      expect(cadetResp.response).toContain('ECLSS water recovery');
+
+      // Mission Commander
+      const cmdrResp = getLocalSafeFallback('What are our solar power constraints?', state, 'commander');
+      expect(cmdrResp.success).toBe(true);
+      expect(cmdrResp.ageTier).toBe('commander');
+      expect(cmdrResp.response).toContain('Photovoltaic generation');
+    });
+
+    it('rejects medical advice requests and external links in safety reviewer', async () => {
+      const { reviewAiResponseSafety } = await import('../server/safetyReviewer');
+
+      const medicalOutput = 'You should take this medicine twice daily to cure your symptoms.';
+      const reviewMed = reviewAiResponseSafety(medicalOutput);
+      expect(reviewMed.isSafe).toBe(false);
+      expect(reviewMed.reason).toContain('dangerous instructions');
+
+      const linkOutput = 'For more details on NASA, check out https://nasa.gov/artemis for info.';
+      const reviewLink = reviewAiResponseSafety(linkOutput);
+      expect(reviewLink.isSafe).toBe(false);
+      expect(reviewLink.reason).toContain('external URL');
+    });
+  });
 });
