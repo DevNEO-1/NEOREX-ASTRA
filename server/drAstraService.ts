@@ -1,15 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { ChatRequestPayload, ChatSuccessResponse, LearningProfileTier } from './types.js';
 import { ServerConfig } from './config.js';
-
-// Response safety filter to prevent unsafe AI output or prompt leakage
-const DISALLOWED_OUTPUT_PATTERNS = [
-  /api[_\s-]?key/i,
-  /system[_\s-]?instruction/i,
-  /dan\s+mode/i,
-  /f\*\*\*|s\*\*\*|b\*\*\*/i, // Profanity safeguard
-  /my\s+personal\s+phone|my\s+email\s+is/i, // Personal information safeguard
-];
+import { reviewAiResponseSafety } from './safetyReviewer.js';
 
 export class DrAstraService {
   private aiClient: GoogleGenAI | null = null;
@@ -81,27 +73,39 @@ LANGUAGE GUIDELINES:
   }
 
   /**
-   * Evaluates AI response against child safety and prompt leakage filters.
+   * Evaluates AI response against distinct child safety review pipeline.
+   * If any safety condition is violated, the raw output is discarded and replaced
+   * with a deterministic, scientifically audited educational fallback.
+   * Note: Regex heuristics alone do not guarantee total safety; a dedicated multi-phase
+   * review checks structural bounds, leakage patterns, PII, and dangerous procedures.
    */
-  public sanitizeAiResponse(rawText: string, fallbackPayload: ChatRequestPayload): string {
-    const text = rawText.trim();
-    if (!text || text.length > 1000) {
+  public evaluateAndSanitizeResponse(rawText: string, fallbackPayload: ChatRequestPayload): string {
+    const review = reviewAiResponseSafety(rawText);
+    if (!review.isSafe) {
+      console.warn(`DrAstraService: Safety review rejected AI response (${review.reason}). Serving safe deterministic fallback.`);
       return this.generateDeterministicFallback(fallbackPayload).response;
     }
-
-    for (const pattern of DISALLOWED_OUTPUT_PATTERNS) {
-      if (pattern.test(text)) {
-        console.warn('DrAstraService: Disallowed pattern detected in AI response. Substituting safe fallback.');
-        return this.generateDeterministicFallback(fallbackPayload).response;
-      }
-    }
-
-    return text;
+    return rawText.trim();
   }
 
   /**
-   * Generate Dr. Astra response using official Google GenAI SDK with safe fallbacks and timeouts.
-   * Employs clean timer management and safe abandonment to prevent hung asynchronous tasks.
+   * Backwards-compatible alias for evaluateAndSanitizeResponse.
+   */
+  public sanitizeAiResponse(rawText: string, fallbackPayload: ChatRequestPayload): string {
+    return this.evaluateAndSanitizeResponse(rawText, fallbackPayload);
+  }
+
+  /**
+   * Generate Dr. Astra response using official Google GenAI SDK.
+   * 
+   * CANCELLATION & ABANDONMENT ARCHITECTURE:
+   * - Uses client-side AbortController via the official SDK's `config.abortSignal` to abort HTTP
+   *   network transport when supported by the underlying transport.
+   * - In addition, maintains an explicit `isAbandoned` state flag and timer lifecycle management.
+   *   If the upstream call exceeds the timeout window, the AbortController is aborted, the operation
+   *   is marked as safely abandoned, and a deterministic educational fallback is served immediately.
+   *   Any late-resolving promises from upstream are strictly discarded and prevented from mutating
+   *   or affecting client responses.
    */
   public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 7000): Promise<ChatSuccessResponse> {
     const { message, learningProfile, campaign, currentObjective, simulationContext } = payload;
@@ -126,11 +130,12 @@ Student's Question: "${message}"
 
 Respond directly to the student as Dr. Astra following your age-appropriate tone and rules. Keep the response under 120 words.`;
 
+    const abortController = new AbortController();
     let timerId: ReturnType<typeof setTimeout> | null = null;
     let isAbandoned = false;
 
     try {
-      // 1. Initiate GenAI call
+      // 1. Initiate GenAI call with client abortSignal
       const generatePromise = this.aiClient.models.generateContent({
         model: this.config.geminiModel,
         contents: contextTelemetryPrompt,
@@ -138,6 +143,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
           systemInstruction: systemPrompt,
           temperature: 0.7,
           maxOutputTokens: 256,
+          abortSignal: abortController.signal,
         },
       });
 
@@ -145,6 +151,12 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       const timeoutPromise = new Promise<never>((_, reject) => {
         timerId = setTimeout(() => {
           isAbandoned = true;
+          // Trigger SDK client abort signal
+          try {
+            abortController.abort();
+          } catch {
+            // Ignore potential abort listener errors
+          }
           reject(new Error('GEMINI_UPSTREAM_TIMEOUT'));
         }, timeoutMs);
       });
@@ -157,12 +169,17 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         timerId = null;
       }
 
+      // Guard against race conditions if resolution happened after abandonment
+      if (isAbandoned) {
+        return this.generateDeterministicFallback(payload);
+      }
+
       const responseText = response.text || '';
-      const sanitizedText = this.sanitizeAiResponse(responseText, payload);
+      const reviewedText = this.evaluateAndSanitizeResponse(responseText, payload);
 
       return {
         success: true,
-        response: sanitizedText,
+        response: reviewedText,
         ageTier: learningProfile,
         timestamp: new Date().toISOString(),
         isFallback: false,
@@ -174,11 +191,20 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         timerId = null;
       }
 
+      // Ensure abort signal is dispatched on error or timeout
+      try {
+        if (!abortController.signal.aborted) {
+          abortController.abort();
+        }
+      } catch {
+        // Ignore
+      }
+
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg === 'GEMINI_UPSTREAM_TIMEOUT' || isAbandoned) {
-        console.warn('DrAstraService: Upstream Gemini call timed out / safely abandoned. Serving deterministic educational fallback.');
+        console.warn('DrAstraService: Upstream Gemini call timed out. Operation aborted and safely abandoned; serving educational fallback.');
       } else {
-        console.warn('DrAstraService: Gemini API call failed. Serving deterministic educational fallback.');
+        console.warn(`DrAstraService: Gemini API call failed (${errMsg}). Serving deterministic educational fallback.`);
       }
       return this.generateDeterministicFallback(payload);
     }

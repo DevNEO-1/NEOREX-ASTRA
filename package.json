@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "typecheck:frontend": "tsc --noEmit",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
-    "typecheck:all": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
+    "typecheck:all": "npm run typecheck:frontend && npm run typecheck:server && npm run typecheck:tests",
     "server": "node dist-server/index.js",
     "server:dev": "tsx server/index.ts"
   },
