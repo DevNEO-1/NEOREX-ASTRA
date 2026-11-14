@@ -36,6 +36,15 @@ All 3D assets integrated into the NEOREX ASTRA Spaceflight Outpost simulation ar
 
 ---
 
+## 3. Planetary Exploration Rover (LRV / Mars Exploration Rover)
+
+- **Asset Implementation:** Procedural 3D Model Generator (`src/utils/roverProcedural.ts`)
+- **Visual Design:** High-detail 6-wheel rocker-bogie mobility chassis, multi-layer gold MLI insulation skirt, remote sensing mast with stereo Mastcam optics, steerable Ultra-High Frequency / High-Gain Antenna (HGA), robotic arm with APXS spectrometer turret, solar array deck (Lunar mission) or nuclear MMRTG thermoelectric generator with thermal cooling fins (Mars mission).
+- **License / Attribution:** Original Three.js procedural implementation adhering to NASA Jet Propulsion Laboratory (JPL) engineering schematics. Open source under project license.
+- **In-Game Usage:** Stationed at outpost coordinates `(-14, 0, 16)`, executes autonomous perimeter reconnaissance loops with animated wheel rotation, panning mastcam, and micro-probing robotic arm. Fully interactive with live telemetry in `BuildingInspectorModal`.
+
+---
+
 ## Technical Performance Standards
 - Binary format: glTF 2.0 (`.glb`) with embedded PBR materials and compact geometry buffers.
 - Maximum asset budget: $< 1\text{ MB}$ per model to maintain instant load times and $>60\text{ FPS}$ on standard mobile devices and laptops.

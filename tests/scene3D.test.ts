@@ -487,5 +487,61 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(interactiveObjects.map(o => o.userData.planetId)).toEqual(['earth', 'mars', 'saturn']);
       expect(interactiveObjects.every(o => o.userData.type === 'planet')).toBe(true);
     });
+
+    it('creates procedural exploration rover with 6 wheels, mastcam, robotic arm, and interactive telemetry metadata', async () => {
+      const { createExplorationRover } = await import('../src/utils/roverProcedural');
+      
+      const lunarRover = createExplorationRover({ campaign: 'moon', isNight: false });
+      expect(lunarRover.name).toBe('exploration_rover_moon');
+      expect(lunarRover.userData.type).toBe('building');
+      expect(lunarRover.userData.buildingType).toBe('rover');
+      expect(lunarRover.userData.title).toContain('Lunar Roving Vehicle');
+
+      // Check subsystems exist
+      const wheels = lunarRover.getObjectByName('rover_wheels');
+      expect(wheels).toBeDefined();
+      expect(wheels?.children.length).toBe(6);
+
+      const mast = lunarRover.getObjectByName('rover_mast');
+      expect(mast).toBeDefined();
+
+      const camHead = lunarRover.getObjectByName('rover_cam_head');
+      expect(camHead).toBeDefined();
+
+      const arm = lunarRover.getObjectByName('rover_arm');
+      expect(arm).toBeDefined();
+
+      const hga = lunarRover.getObjectByName('rover_hga');
+      expect(hga).toBeDefined();
+
+      // Test Mars configuration
+      const marsRover = createExplorationRover({ campaign: 'mars', isNight: true });
+      expect(marsRover.name).toBe('exploration_rover_mars');
+      expect(marsRover.userData.title).toContain('Mars Exploration Rover');
+    });
+
+    it('verifies rover can be safely mounted, registered for raycasting, and disposed via disposeHierarchy', async () => {
+      const { createExplorationRover } = await import('../src/utils/roverProcedural');
+      const rover = createExplorationRover({ campaign: 'moon', isNight: false });
+
+      const interactiveList: THREE.Object3D[] = [];
+      rover.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          child.userData = { ...rover.userData };
+          interactiveList.push(child);
+        }
+      });
+
+      expect(interactiveList.length).toBeGreaterThan(0);
+      expect(interactiveList[0].userData.buildingType).toBe('rover');
+
+      // Hierarchy disposal
+      const scene = new THREE.Group();
+      scene.add(rover);
+      expect(scene.children.length).toBe(1);
+
+      modelLoader.disposeHierarchy(rover);
+      expect(scene.children.length).toBe(0);
+    });
   });
 });

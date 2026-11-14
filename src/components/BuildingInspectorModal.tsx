@@ -13,7 +13,8 @@ import {
   BatteryCharging, 
   Check, 
   Activity, 
-  Power 
+  Power,
+  Compass
 } from 'lucide-react';
 
 export type InspectableBuildingType = 
@@ -23,7 +24,8 @@ export type InspectableBuildingType =
   | 'battery'
   | 'shelter'
   | 'water'
-  | 'lander';
+  | 'lander'
+  | 'rover';
 
 interface BuildingInspectorModalProps {
   buildingType: InspectableBuildingType | null;
@@ -224,6 +226,26 @@ export const BuildingInspectorModal: React.FC<BuildingInspectorModalProps> = ({
             onToggle: () => handleToggleClick('electrolysis'),
             buttonText: gameState.infrastructure.activeLifeSupportO2 ? 'Shed O₂ Electrolysis Load' : 'Engage O₂ Electrolysis',
           },
+        };
+
+      case 'rover':
+        const isMoonRover = gameState.campaign === 'moon';
+        return {
+          title: isMoonRover ? 'Lunar Roving Vehicle (LRV-Ares)' : 'Mars Exploration Rover (Perseverance Spec)',
+          category: 'Surface Exploration & Reconnaissance',
+          icon: Compass,
+          color: 'text-amber-400',
+          borderColor: 'border-amber-500/40',
+          bgColor: 'bg-amber-500/10',
+          description: isMoonRover
+            ? 'Electric exploration rover equipped with a 6-wheel rocker-bogie chassis, panoramic mastcam, and regolith core sampling drill.'
+            : 'Autonomous Martian rover engineered with MMRTG thermoelectric nuclear power, robotic arm spectrometer, and auto-navigation optics.',
+          metrics: [
+            { label: 'Mobility Suspension', value: '6-Wheel Rocker-Bogie', status: 'Operational' },
+            { label: 'Power Source', value: isMoonRover ? 'High-Density Li-Ion & Solar Deck' : 'MMRTG Nuclear Thermoelectric', status: 'Optimal' },
+            { label: 'Surface Distance Logged', value: `${(gameState.day * 2.4).toFixed(1)} km Reconnaissance`, status: 'Recorded' },
+            { label: 'Avionics Link', value: 'Deep Space Network Ground Relay', status: 'Connected' },
+          ],
         };
 
       case 'lander':

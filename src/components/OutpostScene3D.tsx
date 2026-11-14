@@ -26,6 +26,7 @@ import {
 } from '../utils/celestialTextures';
 import { CELESTIAL_BODIES, CelestialBodyInfo } from '../data/celestialBodies';
 import { PlanetInspectorModal } from './PlanetInspectorModal';
+import { createExplorationRover } from '../utils/roverProcedural';
 
 interface OutpostScene3DProps {
   gameState: GameState;
@@ -40,7 +41,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [cameraView, setCameraView] = useState<'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter' | 'earth' | 'mars' | 'jupiter' | 'saturn'>('orbital');
+  const [cameraView, setCameraView] = useState<'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter' | 'rover' | 'earth' | 'mars' | 'jupiter' | 'saturn'>('orbital');
   const [hoveredEntity, setHoveredEntity] = useState<{ title: string; category: string } | null>(null);
   const [selectedPlanet, setSelectedPlanet] = useState<CelestialBodyInfo | null>(null);
   const [isWebGlSupported, setIsWebGlSupported] = useState<boolean>(true);
@@ -81,6 +82,9 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   const shelterGroupRef = useRef<THREE.Group | null>(null);
   const waterRecyclerGroupRef = useRef<THREE.Group | null>(null);
   const landerGroupRef = useRef<THREE.Group | null>(null);
+  const roverGroupRef = useRef<THREE.Group | null>(null);
+  const commDishRef = useRef<THREE.Mesh | null>(null);
+  const dustParticlesRef = useRef<THREE.Points | null>(null);
 
   // Mouse drag & zoom state with smooth camera target
   const mouseStateRef = useRef({
@@ -596,14 +600,59 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     terrain.receiveShadow = true;
     scene.add(terrain);
 
-    // Scattered Lunar Boulders & Rocks
+    // Distant Planetary Mountain Range (Lunar massifs or Martian crater rims)
+    const mountainCount = 36;
+    const mountainRadius = 145;
+    const mountainGeo = new THREE.ConeGeometry(18, 22, 5);
+    const mountainMat = new THREE.MeshStandardMaterial({
+      color: isMoon ? 0x64748b : 0x7c2d12,
+      roughness: 0.98,
+      metalness: 0.02,
+      flatShading: true,
+    });
+
+    for (let m = 0; m < mountainCount; m++) {
+      const angle = (m / mountainCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.15;
+      const dist = mountainRadius + (Math.random() - 0.5) * 20;
+      const heightScale = 0.6 + Math.random() * 1.3;
+      const radiusScale = 0.8 + Math.random() * 0.9;
+
+      const mountain = new THREE.Mesh(mountainGeo, mountainMat);
+      mountain.scale.set(radiusScale, heightScale, radiusScale);
+      mountain.position.set(Math.cos(angle) * dist, (22 * heightScale) / 2 - 2, Math.sin(angle) * dist);
+      mountain.rotation.y = Math.random() * Math.PI;
+      scene.add(mountain);
+    }
+
+    // Mars Atmospheric Dust / Lunar Regolith Suspended Particles
+    const dustCount = isMoon ? 150 : 500;
+    const dustGeo = new THREE.BufferGeometry();
+    const dustPos = new Float32Array(dustCount * 3);
+    for (let d = 0; d < dustCount * 3; d += 3) {
+      dustPos[d] = (Math.random() - 0.5) * 110;
+      dustPos[d + 1] = Math.random() * 18 + 0.3;
+      dustPos[d + 2] = (Math.random() - 0.5) * 110;
+    }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    const dustMat = new THREE.PointsMaterial({
+      color: isMoon ? 0xcbd5e1 : 0xd97706,
+      size: isMoon ? 0.35 : 0.65,
+      transparent: true,
+      opacity: isMoon ? 0.25 : 0.55,
+      depthWrite: false,
+    });
+    const dustParticles = new THREE.Points(dustGeo, dustMat);
+    dustParticlesRef.current = dustParticles;
+    scene.add(dustParticles);
+
+    // Scattered Lunar/Martian Boulders & Rocks
     const rockGeo = new THREE.DodecahedronGeometry(0.8, 1);
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 });
-    for (let r = 0; r < 28; r++) {
+    const rockMat = new THREE.MeshStandardMaterial({ color: isMoon ? 0x475569 : 0x7c2d12, roughness: 0.9 });
+    for (let r = 0; r < 36; r++) {
       const rock = new THREE.Mesh(rockGeo, rockMat);
       const angle = Math.random() * Math.PI * 2;
-      const dist = 16 + Math.random() * 32;
-      const scale = 0.4 + Math.random() * 1.2;
+      const dist = 16 + Math.random() * 38;
+      const scale = 0.4 + Math.random() * 1.5;
       rock.scale.set(scale, scale * (0.6 + Math.random() * 0.8), scale);
       rock.position.set(Math.cos(angle) * dist, scale * 0.4, Math.sin(angle) * dist);
       rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
@@ -685,6 +734,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     dish.rotation.x = 0.5;
     dish.rotation.y = 0.8;
     dish.castShadow = true;
+    commDishRef.current = dish;
     habGroup.add(dish);
 
     scene.add(habGroup);
@@ -834,7 +884,30 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
     scene.add(landerGroup);
 
-    // 5. Astronaut Crew Group
+    // 5. Planetary Surface Exploration Rover Group
+    const roverGroup = new THREE.Group();
+    roverGroupRef.current = roverGroup;
+    roverGroup.position.set(-14, 0, 16);
+    roverGroup.rotation.y = 0.55;
+
+    const roverMeshInstance = createExplorationRover({
+      campaign: gameState.campaign,
+      isNight: !gameState.isDaylight,
+    });
+    roverGroup.add(roverMeshInstance);
+
+    // Register rover interactive child meshes
+    roverMeshInstance.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.userData = { ...roverMeshInstance.userData };
+        if (!interactiveObjectsRef.current.includes(child)) {
+          interactiveObjectsRef.current.push(child);
+        }
+      }
+    });
+    scene.add(roverGroup);
+
+    // 6. Astronaut Crew Group
     const astronautsGroup = new THREE.Group();
     astronautsGroupRef.current = astronautsGroup;
     scene.add(astronautsGroup);
@@ -918,6 +991,59 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
             arrayWing.rotation.y = Math.sin(elapsedTime * 0.1 + idx) * 0.05 + 0.3;
           }
         });
+      }
+
+      // Rotating Communications High-Gain Dish (Deep Space Network alignment)
+      if (commDishRef.current) {
+        commDishRef.current.rotation.y = elapsedTime * 0.12 * speedMult;
+      }
+
+      // Rover Reconnaissance Movement & Wheel Rotations
+      if (roverGroupRef.current) {
+        const rover = roverGroupRef.current;
+        // Rover slow patrol loop in quadrant
+        const patrolRadius = 2.4;
+        const patrolSpeed = 0.25 * speedMult;
+        const roverAngle = elapsedTime * patrolSpeed;
+        const baseX = -14;
+        const baseZ = 16;
+        rover.position.x = baseX + Math.cos(roverAngle) * patrolRadius;
+        rover.position.z = baseZ + Math.sin(roverAngle) * patrolRadius;
+        rover.rotation.y = -roverAngle + Math.PI / 2;
+
+        // Animate rover wheels rolling
+        const wheels = rover.getObjectByName('rover_wheels');
+        if (wheels) {
+          wheels.children.forEach((w) => {
+            w.rotation.x = elapsedTime * 1.8 * speedMult;
+          });
+        }
+
+        // Animate rover mastcam scanning
+        const camHead = rover.getObjectByName('rover_cam_head');
+        if (camHead) {
+          camHead.rotation.y = Math.sin(elapsedTime * 0.8) * 0.35;
+        }
+
+        // Animate robotic arm micro-probing
+        const arm = rover.getObjectByName('rover_arm');
+        if (arm) {
+          arm.rotation.z = Math.sin(elapsedTime * 0.5) * 0.08;
+        }
+      }
+
+      // Atmospheric Dust Particles Drift Animation
+      if (dustParticlesRef.current) {
+        const dPos = dustParticlesRef.current.geometry.attributes.position.array as Float32Array;
+        const dustSpeedX = (isMoon ? 0.02 : 0.08) * speedMult;
+        const dustSpeedZ = (isMoon ? 0.015 : 0.05) * speedMult;
+        for (let di = 0; di < dPos.length; di += 3) {
+          dPos[di] += dustSpeedX;
+          dPos[di + 2] += dustSpeedZ;
+          if (dPos[di] > 55) dPos[di] = -55;
+          if (dPos[di + 2] > 55) dPos[di + 2] = -55;
+        }
+        dustParticlesRef.current.geometry.attributes.position.needsUpdate = true;
       }
 
       // Astronaut low-gravity bounce & breathing animation
@@ -1184,6 +1310,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       if (landerGroupRef.current) {
         modelLoader.disposeHierarchy(landerGroupRef.current);
         landerGroupRef.current = null;
+      }
+
+      // Clean up rover model instance
+      if (roverGroupRef.current) {
+        modelLoader.disposeHierarchy(roverGroupRef.current);
+        roverGroupRef.current = null;
       }
 
       // Clean up astronaut model instances and wrappers
@@ -1598,7 +1730,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   }, [gameState]);
 
   // Camera preset transitions with smooth animated targets
-  const setPresetView = (view: 'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter' | 'earth' | 'mars' | 'jupiter' | 'saturn') => {
+  const setPresetView = (view: 'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter' | 'rover' | 'earth' | 'mars' | 'jupiter' | 'saturn') => {
     setCameraView(view);
     audioSystem.playClick();
     const m = mouseStateRef.current;
@@ -1632,6 +1764,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         m.rotationX = 0.35;
         m.rotationY = 2.4;
         m.targetDistance = 32;
+        break;
+      case 'rover':
+        m.targetLookAt.set(-14, 1.2, 16);
+        m.rotationX = 0.28;
+        m.rotationY = -0.4;
+        m.targetDistance = 16;
         break;
       case 'water':
         m.targetLookAt.set(-8.5, 2, 7.5);
@@ -1710,7 +1848,11 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
             : 'bg-slate-900/90 text-amber-300 border-amber-500/40'
         }`}>
           {isNight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
-          <span>{isNight ? 'Lunar Night (Earthlight Only)' : 'Solar Daylight Active'}</span>
+          <span>
+            {gameState.campaign === 'moon'
+              ? (isNight ? 'Lunar Night (Earthlight Only)' : 'Solar Daylight Active')
+              : (isNight ? 'Martian Sol Night (Phobos/Deimos Sky)' : 'Martian Sol Daylight (Dust Optical Depth)')}
+          </span>
         </div>
 
         {gameState.activeEvents.some(e => e.type === 'solar_storm' && !e.resolved) && (
@@ -1740,7 +1882,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         
         {/* Outpost Preset Selector */}
         <div className="hidden sm:flex items-center gap-1 mr-1">
-          {(['orbital', 'habitat', 'solar', 'greenhouse', 'water', 'shelter', 'lander'] as const).map(preset => (
+          {(['orbital', 'habitat', 'solar', 'greenhouse', 'water', 'shelter', 'lander', 'rover'] as const).map(preset => (
             <button
               key={preset}
               onClick={() => setPresetView(preset)}
