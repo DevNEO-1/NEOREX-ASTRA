@@ -660,6 +660,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         landerGroupRef.current = null;
       }
 
+      // Clean up astronaut model instances and wrappers
+      if (astronautsGroupRef.current) {
+        modelLoader.disposeHierarchy(astronautsGroupRef.current);
+        astronautsGroupRef.current = null;
+      }
+
+      interactiveObjectsRef.current = [];
+
       renderer.dispose();
     };
   }, [gameState.campaign, onSelectBuilding, onSelectAstronaut]);
@@ -1038,7 +1046,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
               interactiveObjectsRef.current = interactiveObjectsRef.current.filter(obj => obj !== child);
             });
             aGroup.remove(existingGlb);
-            modelLoader.removeInstance(existingGlb);
+            modelLoader.disposeHierarchy(existingGlb);
           }
 
           aGroup.add(astroWrapper);

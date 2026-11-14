@@ -17,6 +17,7 @@ export interface CachedModelData {
   scene: THREE.Group;
   animations: THREE.AnimationClip[];
   activeInstances: number;
+  url?: string;
 }
 
 /**
@@ -69,6 +70,7 @@ class ModelLoaderService {
             scene: gltf.scene,
             animations: gltf.animations || [],
             activeInstances: 0,
+            url,
           };
           this.cache.set(url, data);
           this.pendingPromises.delete(url);
@@ -99,10 +101,14 @@ class ModelLoaderService {
     const instance = cloneSkeleton(cached.scene) as THREE.Group;
     cached.activeInstances++;
 
-    // Tag the instance with its source URL and cloned status for safe disposal identification
+    const modelUrl = sourceUrl || cached.url;
+
+    // Tag the instance with its source URL, cloned status, and decrement tracking
     instance.userData.__isClonedInstance = true;
-    if (sourceUrl) {
-      instance.userData.__sourceUrl = sourceUrl;
+    instance.userData.__fromClonedInstance = true;
+    instance.userData.__instanceDecremented = false;
+    if (modelUrl) {
+      instance.userData.__sourceUrl = modelUrl;
     }
 
     if (options.name) {
@@ -140,6 +146,12 @@ class ModelLoaderService {
     const receive = options.receiveShadow ?? true;
 
     instance.traverse((child) => {
+      // Mark all descendant nodes so they are recognized as sharing cached buffers
+      child.userData.__fromClonedInstance = true;
+      if (modelUrl) {
+        child.userData.__sourceUrl = modelUrl;
+      }
+
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
         mesh.castShadow = cast;
@@ -174,16 +186,38 @@ class ModelLoaderService {
   }
 
   /**
-   * Safe removal of a cloned instance from the scene graph.
+   * Safe removal of a cloned instance or wrapper group from the scene graph.
    * Does NOT destroy shared geometries or materials that are cached or shared with other active instances.
-   * Decrements the active reference counter on the cached model entry.
+   * Decrements active reference counts exactly once for every cloned instance (itself or nested).
    */
-  public removeInstance(instance: THREE.Object3D, parent?: THREE.Object3D): void {
+  public removeInstance(object: THREE.Object3D, parent?: THREE.Object3D): void {
+    if (!object) return;
+
     if (parent) {
-      parent.remove(instance);
-    } else if (instance.parent) {
-      instance.parent.remove(instance);
+      parent.remove(object);
+    } else if (object.parent) {
+      object.parent.remove(object);
     }
+
+    // If object itself is a cloned instance root, decrement it
+    if (object.userData && object.userData.__isClonedInstance) {
+      this.decrementInstanceCount(object);
+      return;
+    }
+
+    // If object is a wrapper or group containing nested cloned instances, decrement each nested clone root
+    object.traverse((child) => {
+      if (child !== object && child.userData && child.userData.__isClonedInstance) {
+        this.decrementInstanceCount(child);
+      }
+    });
+  }
+
+  private decrementInstanceCount(instance: THREE.Object3D): void {
+    if (instance.userData && instance.userData.__instanceDecremented) {
+      return; // Ensure each instance decrements exactly once
+    }
+    instance.userData.__instanceDecremented = true;
 
     const sourceUrl = instance.userData.__sourceUrl as string | undefined;
     if (sourceUrl && this.cache.has(sourceUrl)) {
@@ -193,17 +227,56 @@ class ModelLoaderService {
   }
 
   /**
-   * Explicitly disposes of uniquely owned 3D objects, geometries, and materials (e.g. procedural fallbacks).
-   * Guards against destroying shared cached resources if called on a cloned instance.
+   * Recursive, ownership-aware cleanup of an Object3D hierarchy.
+   * 1. Detects every nested cloned model instance within the hierarchy.
+   * 2. Removes each cloned instance safely using removeInstance (decrementing refcounts exactly once).
+   * 3. Disposes ONLY uniquely owned procedural geometries, materials, and textures (e.g. role rings, fallbacks).
+   * 4. Detaches the object from its parent.
+   * 5. Safe for repeated (idempotent) calls.
    */
   public disposeHierarchy(object: THREE.Object3D): void {
-    // If this is a cloned instance referencing cached shared buffers, use removeInstance to protect shared assets
+    if (!object) return;
+
+    // 1. Find all cloned instance roots at or within this object hierarchy
+    const clonedRoots: THREE.Object3D[] = [];
     if (object.userData && object.userData.__isClonedInstance) {
-      this.removeInstance(object);
+      clonedRoots.push(object);
+    } else {
+      object.traverse((child) => {
+        if (child.userData && child.userData.__isClonedInstance) {
+          // Avoid duplicate sub-roots if nested
+          const hasClonedAncestor = clonedRoots.some((ancestor) => {
+            let curr: THREE.Object3D | null = child.parent;
+            while (curr && curr !== object) {
+              if (curr === ancestor) return true;
+              curr = curr.parent;
+            }
+            return false;
+          });
+          if (!hasClonedAncestor) {
+            clonedRoots.push(child);
+          }
+        }
+      });
+    }
+
+    // 2. Remove each cloned instance root safely (detaches and decrements exactly once)
+    for (const clonedRoot of clonedRoots) {
+      this.removeInstance(clonedRoot);
+    }
+
+    // If the object itself was a cloned instance root, removeInstance already handled it
+    if (object.userData && object.userData.__isClonedInstance) {
       return;
     }
 
+    // 3. Dispose ONLY uniquely owned procedural resources.
+    // Cloned model meshes (already detached, or protected by __fromClonedInstance) are NEVER disposed.
     object.traverse((child) => {
+      if (child.userData && (child.userData.__fromClonedInstance || child.userData.__isClonedInstance)) {
+        return;
+      }
+
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
         if (mesh.geometry) {

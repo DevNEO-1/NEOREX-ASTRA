@@ -153,6 +153,189 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect((modelLoader as any).cache.size).toBe(0);
     });
 
+    it('recursively cleans up astronaut wrapper, decrements instance count exactly once, disposes role ring, and protects shared GLB geometry/material', () => {
+      const mockAstroScene = new THREE.Group();
+      const sharedGeo = new THREE.SphereGeometry(0.5);
+      const sharedMat = new THREE.MeshBasicMaterial();
+      const disposeSharedGeo = vi.fn();
+      const disposeSharedMat = vi.fn();
+      sharedGeo.dispose = disposeSharedGeo;
+      sharedMat.dispose = disposeSharedMat;
+      mockAstroScene.add(new THREE.Mesh(sharedGeo, sharedMat));
+
+      const url = '/models/test/nested_astro.glb';
+      const cachedAstro = {
+        scene: mockAstroScene,
+        animations: [],
+        activeInstances: 0,
+        url,
+      };
+      (modelLoader as any).cache.set(url, cachedAstro);
+
+      // Instantiate two distinct astronauts sharing the same cached model
+      const astro1 = modelLoader.instantiateModel(cachedAstro, {}, url);
+      const astro2 = modelLoader.instantiateModel(cachedAstro, {}, url);
+      expect(cachedAstro.activeInstances).toBe(2);
+
+      // Wrap astro1 in astronaut_glb_* wrapper with procedural role ring
+      const wrapper1 = new THREE.Group();
+      wrapper1.name = 'astronaut_glb_astro_1';
+      wrapper1.add(astro1);
+
+      const ringGeo1 = new THREE.RingGeometry(0.5, 0.7, 16);
+      const ringMat1 = new THREE.MeshBasicMaterial();
+      const disposeRingGeo1 = vi.fn();
+      const disposeRingMat1 = vi.fn();
+      ringGeo1.dispose = disposeRingGeo1;
+      ringMat1.dispose = disposeRingMat1;
+      const ring1 = new THREE.Mesh(ringGeo1, ringMat1);
+      wrapper1.add(ring1);
+
+      // Wrap astro2 in astronaut_glb_* wrapper with procedural role ring
+      const wrapper2 = new THREE.Group();
+      wrapper2.name = 'astronaut_glb_astro_2';
+      wrapper2.add(astro2);
+      const ring2 = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.7, 16), new THREE.MeshBasicMaterial());
+      wrapper2.add(ring2);
+
+      const crewGroup = new THREE.Group();
+      crewGroup.add(wrapper1);
+      crewGroup.add(wrapper2);
+      expect(crewGroup.children.length).toBe(2);
+
+      // Dispose wrapper1
+      modelLoader.disposeHierarchy(wrapper1);
+
+      // Verify wrapper1 was removed from crewGroup, leaving wrapper2
+      expect(crewGroup.children.length).toBe(1);
+      expect(crewGroup.children[0]).toBe(wrapper2);
+
+      // Verify active instance count decremented exactly once
+      expect(cachedAstro.activeInstances).toBe(1);
+
+      // Verify shared GLB geometry and material were NOT disposed
+      expect(disposeSharedGeo).not.toHaveBeenCalled();
+      expect(disposeSharedMat).not.toHaveBeenCalled();
+
+      // Verify procedural role ring geometry and material WERE disposed
+      expect(disposeRingGeo1).toHaveBeenCalled();
+      expect(disposeRingMat1).toHaveBeenCalled();
+
+      // Verify repeated disposal call on wrapper1 is safe and does not double-decrement
+      modelLoader.disposeHierarchy(wrapper1);
+      expect(cachedAstro.activeInstances).toBe(1);
+      expect(disposeSharedGeo).not.toHaveBeenCalled();
+
+      // Verify second astronaut clone in wrapper2 still renders with intact geometry and material
+      expect(astro2.parent).toBe(wrapper2);
+      expect((astro2.children[0] as THREE.Mesh).geometry).toBe(sharedGeo);
+      expect((astro2.children[0] as THREE.Mesh).material).toBe(sharedMat);
+    });
+
+    it('disposes lander parent group containing nested cloned lander instance and procedural fallback safely', () => {
+      const mockLanderScene = new THREE.Group();
+      const sharedLanderGeo = new THREE.CylinderGeometry(1, 1, 2);
+      const sharedLanderMat = new THREE.MeshStandardMaterial();
+      const disposeLanderGeo = vi.fn();
+      const disposeLanderMat = vi.fn();
+      sharedLanderGeo.dispose = disposeLanderGeo;
+      sharedLanderMat.dispose = disposeLanderMat;
+      mockLanderScene.add(new THREE.Mesh(sharedLanderGeo, sharedLanderMat));
+
+      const landerUrl = '/models/test/nested_lander.glb';
+      const cachedLander = {
+        scene: mockLanderScene,
+        animations: [],
+        activeInstances: 0,
+        url: landerUrl,
+      };
+      (modelLoader as any).cache.set(landerUrl, cachedLander);
+
+      const landerGroup = new THREE.Group();
+      landerGroup.name = 'landerGroup';
+
+      // Procedural fallback
+      const fallbackGeo = new THREE.ConeGeometry(2, 3);
+      const fallbackMat = new THREE.MeshStandardMaterial();
+      const disposeFallbackGeo = vi.fn();
+      const disposeFallbackMat = vi.fn();
+      fallbackGeo.dispose = disposeFallbackGeo;
+      fallbackMat.dispose = disposeFallbackMat;
+      const fallbackMesh = new THREE.Mesh(fallbackGeo, fallbackMat);
+      fallbackMesh.name = 'landerProceduralFallback';
+      landerGroup.add(fallbackMesh);
+
+      // Cloned lander instance
+      const landerInstance = modelLoader.instantiateModel(cachedLander, {}, landerUrl);
+      landerInstance.name = 'landerGLB';
+      landerGroup.add(landerInstance);
+
+      expect(cachedLander.activeInstances).toBe(1);
+
+      const scene = new THREE.Scene();
+      scene.add(landerGroup);
+      expect(scene.children.length).toBe(1);
+
+      // Dispose landerGroup
+      modelLoader.disposeHierarchy(landerGroup);
+
+      // Verify landerGroup removed from scene
+      expect(scene.children.length).toBe(0);
+
+      // Verify active instance count decremented to 0
+      expect(cachedLander.activeInstances).toBe(0);
+
+      // Verify procedural fallback was disposed
+      expect(disposeFallbackGeo).toHaveBeenCalled();
+      expect(disposeFallbackMat).toHaveBeenCalled();
+
+      // Verify shared lander geometry and material were NOT disposed
+      expect(disposeLanderGeo).not.toHaveBeenCalled();
+      expect(disposeLanderMat).not.toHaveBeenCalled();
+
+      // Repeated disposal call is safe and idempotent
+      modelLoader.disposeHierarchy(landerGroup);
+      expect(cachedLander.activeInstances).toBe(0);
+      expect(disposeLanderGeo).not.toHaveBeenCalled();
+    });
+
+    it('calling removeInstance on a wrapper group decrements nested model counts exactly once without disposing geometries', () => {
+      const mockScene = new THREE.Group();
+      const sharedGeo = new THREE.BoxGeometry(1, 1, 1);
+      const sharedMat = new THREE.MeshBasicMaterial();
+      const disposeGeoSpy = vi.fn();
+      sharedGeo.dispose = disposeGeoSpy;
+      mockScene.add(new THREE.Mesh(sharedGeo, sharedMat));
+
+      const url = '/models/test/remove_wrapper.glb';
+      const cached = {
+        scene: mockScene,
+        animations: [],
+        activeInstances: 0,
+        url,
+      };
+      (modelLoader as any).cache.set(url, cached);
+
+      const astro = modelLoader.instantiateModel(cached, {}, url);
+      expect(cached.activeInstances).toBe(1);
+
+      const wrapper = new THREE.Group();
+      wrapper.add(astro);
+      const parent = new THREE.Group();
+      parent.add(wrapper);
+      expect(parent.children.length).toBe(1);
+
+      modelLoader.removeInstance(wrapper);
+      expect(parent.children.length).toBe(0);
+      expect(cached.activeInstances).toBe(0);
+      expect(disposeGeoSpy).not.toHaveBeenCalled();
+
+      // Repeated call does not double decrement
+      modelLoader.removeInstance(wrapper);
+      expect(cached.activeInstances).toBe(0);
+      expect(disposeGeoSpy).not.toHaveBeenCalled();
+    });
+
     it('handles model loading rejection gracefully without crashing', async () => {
       const result = await modelLoader.loadAndInstantiate('/models/nonexistent/missing.glb');
       expect(result).toBeNull();
