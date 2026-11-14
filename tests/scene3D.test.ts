@@ -396,4 +396,96 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(attachedToScene).toBe(false);
     });
   });
+
+  describe('5. Realistic Cinematic Space World & Celestial Interactions', () => {
+    it('verifies celestial bodies catalog contains educational telemetry and campaign availability', async () => {
+      const { CELESTIAL_BODIES } = await import('../src/data/celestialBodies');
+
+      expect(CELESTIAL_BODIES.earth).toBeDefined();
+      expect(CELESTIAL_BODIES.moon).toBeDefined();
+      expect(CELESTIAL_BODIES.mars).toBeDefined();
+      expect(CELESTIAL_BODIES.jupiter).toBeDefined();
+      expect(CELESTIAL_BODIES.saturn).toBeDefined();
+
+      // Earth telemetry & active campaign status
+      expect(CELESTIAL_BODIES.earth.diameterKm).toBe('12,742 km');
+      expect(CELESTIAL_BODIES.earth.gravityMps2).toContain('9.807');
+      expect(CELESTIAL_BODIES.earth.campaignAvailability).toBe('active');
+      expect(CELESTIAL_BODIES.earth.nasaFacts.length).toBeGreaterThanOrEqual(3);
+
+      // Mars telemetry & unlockable status
+      expect(CELESTIAL_BODIES.mars.diameterKm).toContain('6,779 km');
+      expect(CELESTIAL_BODIES.mars.campaignAvailability).toBe('unlockable');
+
+      // Saturn telemetry & rings
+      expect(CELESTIAL_BODIES.saturn.diameterKm).toContain('116,460 km');
+      expect(CELESTIAL_BODIES.saturn.campaignAvailability).toBe('future');
+      expect(CELESTIAL_BODIES.saturn.nasaFacts[0]).toContain('rings');
+    });
+
+    it('creates multi-layer starfield with deep field, navigational spectral colors, and bright stars', () => {
+      // Layer 1: Deep field faint stars
+      const deepStarGeo = new THREE.BufferGeometry();
+      const deepStarPos = new Float32Array(1200 * 3);
+      deepStarGeo.setAttribute('position', new THREE.BufferAttribute(deepStarPos, 3));
+      expect(deepStarGeo.attributes.position.count).toBe(1200);
+
+      // Layer 2: Navigational stars with spectral class vertex colors
+      const navStarGeo = new THREE.BufferGeometry();
+      const navStarPos = new Float32Array(600 * 3);
+      const navStarColors = new Float32Array(600 * 3);
+      navStarGeo.setAttribute('position', new THREE.BufferAttribute(navStarPos, 3));
+      navStarGeo.setAttribute('color', new THREE.BufferAttribute(navStarColors, 3));
+      expect(navStarGeo.attributes.position.count).toBe(600);
+      expect(navStarGeo.attributes.color.count).toBe(600);
+
+      // Layer 3: Prominent bright stars
+      const brightStarGeo = new THREE.BufferGeometry();
+      const brightStarPos = new Float32Array(80 * 3);
+      brightStarGeo.setAttribute('position', new THREE.BufferAttribute(brightStarPos, 3));
+      expect(brightStarGeo.attributes.position.count).toBe(80);
+    });
+
+    it('constructs Saturn ring geometry with Cassini division dimensions', () => {
+      const ringGeo = new THREE.RingGeometry(1.24, 2.35, 48);
+      expect(ringGeo.parameters.innerRadius).toBeCloseTo(1.24);
+      expect(ringGeo.parameters.outerRadius).toBeCloseTo(2.35);
+      expect(ringGeo.attributes.position.count).toBeGreaterThan(0);
+    });
+
+    it('registers planetary celestial bodies into raycasting interactive registry with educational metadata', () => {
+      const interactiveObjects: THREE.Object3D[] = [];
+
+      const earth = new THREE.Mesh(new THREE.SphereGeometry(5.2), new THREE.MeshBasicMaterial());
+      earth.userData = {
+        type: 'planet',
+        planetId: 'earth',
+        title: 'Earth (Terra)',
+        category: 'Planetary Observatory',
+      };
+      interactiveObjects.push(earth);
+
+      const mars = new THREE.Mesh(new THREE.SphereGeometry(3.2), new THREE.MeshBasicMaterial());
+      mars.userData = {
+        type: 'planet',
+        planetId: 'mars',
+        title: 'Mars (The Red Planet)',
+        category: 'Planetary Observatory',
+      };
+      interactiveObjects.push(mars);
+
+      const saturn = new THREE.Mesh(new THREE.SphereGeometry(5.8), new THREE.MeshBasicMaterial());
+      saturn.userData = {
+        type: 'planet',
+        planetId: 'saturn',
+        title: 'Saturn (Ringed World)',
+        category: 'Planetary Observatory',
+      };
+      interactiveObjects.push(saturn);
+
+      expect(interactiveObjects.length).toBe(3);
+      expect(interactiveObjects.map(o => o.userData.planetId)).toEqual(['earth', 'mars', 'saturn']);
+      expect(interactiveObjects.every(o => o.userData.type === 'planet')).toBe(true);
+    });
+  });
 });

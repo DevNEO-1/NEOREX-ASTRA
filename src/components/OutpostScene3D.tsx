@@ -9,11 +9,23 @@ import {
   RotateCw, 
   Sun, 
   Moon, 
-  ShieldAlert,
-  Sparkles
+  ShieldAlert, 
+  Sparkles,
+  Globe2,
+  AlertTriangle
 } from 'lucide-react';
 import { audioSystem } from '../utils/audioSystem';
 import { modelLoader } from '../utils/modelLoader';
+import { 
+  getEarthTexture, 
+  getEarthCloudsTexture, 
+  getMarsTexture, 
+  getJupiterTexture, 
+  getSaturnTexture, 
+  getSaturnRingTexture 
+} from '../utils/celestialTextures';
+import { CELESTIAL_BODIES, CelestialBodyInfo } from '../data/celestialBodies';
+import { PlanetInspectorModal } from './PlanetInspectorModal';
 
 interface OutpostScene3DProps {
   gameState: GameState;
@@ -28,8 +40,10 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [cameraView, setCameraView] = useState<'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter'>('orbital');
+  const [cameraView, setCameraView] = useState<'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter' | 'earth' | 'mars' | 'jupiter' | 'saturn'>('orbital');
   const [hoveredEntity, setHoveredEntity] = useState<{ title: string; category: string } | null>(null);
+  const [selectedPlanet, setSelectedPlanet] = useState<CelestialBodyInfo | null>(null);
+  const [isWebGlSupported, setIsWebGlSupported] = useState<boolean>(true);
 
   // Scene references
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -38,9 +52,19 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   const animFrameRef = useRef<number | null>(null);
   const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
-  const starsRef = useRef<THREE.Points | null>(null);
   const stormParticlesRef = useRef<THREE.Points | null>(null);
+
+  // Celestial cosmic system refs
+  const celestialGroupRef = useRef<THREE.Group | null>(null);
+  const planetsGroupRef = useRef<THREE.Group | null>(null);
   const earthMeshRef = useRef<THREE.Mesh | null>(null);
+  const earthCloudsMeshRef = useRef<THREE.Mesh | null>(null);
+  const marsMeshRef = useRef<THREE.Mesh | null>(null);
+  const jupiterMeshRef = useRef<THREE.Mesh | null>(null);
+  const saturnMeshRef = useRef<THREE.Mesh | null>(null);
+  const saturnRingsMeshRef = useRef<THREE.Mesh | null>(null);
+  const shootingStarsRef = useRef<{ line: THREE.Line; velocity: THREE.Vector3; life: number; maxLife: number }[]>([]);
+  const isReducedMotionRef = useRef<boolean>(false);
 
   // Raycaster for interactive clicking
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
@@ -76,16 +100,35 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     const container = mountRef.current;
     if (!container) return;
 
-    // Create Scene
+    // Detect prefers-reduced-motion
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      isReducedMotionRef.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    // Verify WebGL availability
+    try {
+      const testCanvas = document.createElement('canvas');
+      const gl = testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
+      if (!gl) {
+        setIsWebGlSupported(false);
+        return;
+      }
+    } catch {
+      setIsWebGlSupported(false);
+      return;
+    }
+
+    // Create Scene with realistic dark outer space
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     const isMoon = gameState.campaign === 'moon';
-    scene.background = new THREE.Color(isMoon ? 0x020617 : 0x1f0b08);
-    scene.fog = new THREE.FogExp2(isMoon ? 0x040817 : 0x2b0f0a, 0.0065);
+    // Realistic space background: deep cosmic black with subtle astronomical ambient
+    scene.background = new THREE.Color(isMoon ? 0x01040f : 0x0d0505);
+    scene.fog = new THREE.FogExp2(isMoon ? 0x01040f : 0x1a0705, 0.0032);
 
     // Camera
     const aspect = container.clientWidth / container.clientHeight;
-    const camera = new THREE.PerspectiveCamera(45, aspect, 0.5, 1000);
+    const camera = new THREE.PerspectiveCamera(45, aspect, 0.5, 1200);
     cameraRef.current = camera;
     camera.position.set(25, 20, 35);
     camera.lookAt(0, 2.5, 0);
@@ -107,13 +150,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     container.appendChild(renderer.domElement);
 
     // ==========================================
-    // LIGHTING & CELESTIAL BODIES
+    // LIGHTING & CINEMATIC CELESTIAL ENVIRONMENT
     // ==========================================
-    const ambientLight = new THREE.AmbientLight(isMoon ? 0x223344 : 0x442222, 0.35);
+    // Soft, realistic aerospace illumination: directional sunlight + subtle earthlight ambient
+    const ambientLight = new THREE.AmbientLight(isMoon ? 0x1e293b : 0x271916, 0.28);
     ambientLightRef.current = ambientLight;
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfff7e6, 2.4);
+    const sunLight = new THREE.DirectionalLight(0xfffbf2, 2.2);
     sunLightRef.current = sunLight;
     sunLight.position.set(40, 28, 30);
     sunLight.castShadow = true;
@@ -128,57 +172,381 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
-    // Earth in the sky (with rotational animation)
-    if (isMoon) {
-      const earthGeo = new THREE.SphereGeometry(4.2, 32, 32);
-      const earthMat = new THREE.MeshStandardMaterial({ 
-        color: 0x3b82f6, 
-        roughness: 0.4, 
-        metalness: 0.1, 
-        emissive: 0x1d4ed8, 
-        emissiveIntensity: 0.25 
-      });
-      const earth = new THREE.Mesh(earthGeo, earthMat);
-      earth.position.set(-65, 52, -85);
-      earthMeshRef.current = earth;
-      scene.add(earth);
+    // Celestial Cosmic Container with pointer-responsive parallax
+    const celestialGroup = new THREE.Group();
+    celestialGroupRef.current = celestialGroup;
+    scene.add(celestialGroup);
 
-      // Earth atmosphere glow ring
-      const glowGeo = new THREE.RingGeometry(4.3, 5.4, 32);
-      const glowMat = new THREE.MeshBasicMaterial({ 
-        color: 0x60a5fa, 
-        side: THREE.DoubleSide, 
-        transparent: true, 
-        opacity: 0.45 
-      });
-      const glow = new THREE.Mesh(glowGeo, glowMat);
-      glow.position.copy(earth.position);
-      glow.lookAt(camera.position);
-      scene.add(glow);
-    }
-
-    // High-density Starfield Background (750 stars)
-    const starCount = 750;
-    const starGeo = new THREE.BufferGeometry();
-    const starPos = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount * 3; i += 3) {
+    // 1. Multi-Layer Starfield
+    // Layer 1: Deep field faint stars (1,200 points)
+    const deepStarCount = 1200;
+    const deepStarGeo = new THREE.BufferGeometry();
+    const deepStarPos = new Float32Array(deepStarCount * 3);
+    for (let i = 0; i < deepStarCount * 3; i += 3) {
       const u = Math.random();
       const v = Math.random();
       const theta = u * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * v - 1.0);
-      const r = 260 + Math.random() * 50;
-      starPos[i] = r * Math.sin(phi) * Math.cos(theta);
-      starPos[i + 1] = Math.abs(r * Math.cos(phi)) + 10;
-      starPos[i + 2] = r * Math.sin(phi) * Math.sin(theta);
+      const r = 360 + Math.random() * 80;
+      deepStarPos[i] = r * Math.sin(phi) * Math.cos(theta);
+      deepStarPos[i + 1] = Math.abs(r * Math.cos(phi)) + 12;
+      deepStarPos[i + 2] = r * Math.sin(phi) * Math.sin(theta);
     }
-    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.25, transparent: true, opacity: 0.9 });
-    const stars = new THREE.Points(starGeo, starMat);
-    starsRef.current = stars;
-    scene.add(stars);
+    deepStarGeo.setAttribute('position', new THREE.BufferAttribute(deepStarPos, 3));
+    const deepStarMat = new THREE.PointsMaterial({ 
+      color: 0x94a3b8, 
+      size: 0.9, 
+      transparent: true, 
+      opacity: 0.65 
+    });
+    const deepStars = new THREE.Points(deepStarGeo, deepStarMat);
+    celestialGroup.add(deepStars);
 
-    // Solar Storm Cosmic Particles
-    const stormCount = 500;
+    // Layer 2: Navigational stars with spectral temperature hues (600 points)
+    const navStarCount = 600;
+    const navStarGeo = new THREE.BufferGeometry();
+    const navStarPos = new Float32Array(navStarCount * 3);
+    const navStarColors = new Float32Array(navStarCount * 3);
+    // Spectral Class palette: O/B (Blue-White), A/F (Pure White), G/K (Yellow-Gold), M (Red Giant)
+    const spectralColors = [
+      [0.65, 0.82, 1.00], // O/B Blue-White
+      [0.98, 0.98, 1.00], // A/F White
+      [1.00, 0.88, 0.55], // G/K Yellow-Gold
+      [1.00, 0.52, 0.40], // M Red Giant
+    ];
+    for (let i = 0; i < navStarCount; i++) {
+      const idx3 = i * 3;
+      const u = Math.random();
+      const v = Math.random();
+      const theta = u * 2.0 * Math.PI;
+      const phi = Math.acos(2.0 * v - 1.0);
+      const r = 320 + Math.random() * 60;
+      navStarPos[idx3] = r * Math.sin(phi) * Math.cos(theta);
+      navStarPos[idx3 + 1] = Math.abs(r * Math.cos(phi)) + 10;
+      navStarPos[idx3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+      const paletteIdx = Math.floor(Math.random() * spectralColors.length);
+      const rgb = spectralColors[paletteIdx];
+      navStarColors[idx3] = rgb[0];
+      navStarColors[idx3 + 1] = rgb[1];
+      navStarColors[idx3 + 2] = rgb[2];
+    }
+    navStarGeo.setAttribute('position', new THREE.BufferAttribute(navStarPos, 3));
+    navStarGeo.setAttribute('color', new THREE.BufferAttribute(navStarColors, 3));
+    const navStarMat = new THREE.PointsMaterial({ 
+      size: 1.6, 
+      vertexColors: true, 
+      transparent: true, 
+      opacity: 0.85 
+    });
+    const navStars = new THREE.Points(navStarGeo, navStarMat);
+    celestialGroup.add(navStars);
+
+    // Layer 3: Prominent bright stellar beacons (80 points)
+    const brightStarCount = 80;
+    const brightStarGeo = new THREE.BufferGeometry();
+    const brightStarPos = new Float32Array(brightStarCount * 3);
+    for (let i = 0; i < brightStarCount * 3; i += 3) {
+      const u = Math.random();
+      const v = Math.random();
+      const theta = u * 2.0 * Math.PI;
+      const phi = Math.acos(2.0 * v - 1.0);
+      const r = 280 + Math.random() * 50;
+      brightStarPos[i] = r * Math.sin(phi) * Math.cos(theta);
+      brightStarPos[i + 1] = Math.abs(r * Math.cos(phi)) + 15;
+      brightStarPos[i + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    brightStarGeo.setAttribute('position', new THREE.BufferAttribute(brightStarPos, 3));
+    const brightStarMat = new THREE.PointsMaterial({ 
+      color: 0xffffff, 
+      size: 2.4, 
+      transparent: true, 
+      opacity: 0.95 
+    });
+    const brightStars = new THREE.Points(brightStarGeo, brightStarMat);
+    celestialGroup.add(brightStars);
+
+    // 2. Distant Nebulae (Cosmic Dust Clouds)
+    // Hydrogen-Alpha Emission Nebula (Eagle / Carina style)
+    const nebulaCount = 180;
+    const nebulaGeo = new THREE.BufferGeometry();
+    const nebulaPos = new Float32Array(nebulaCount * 3);
+    const nebulaColors = new Float32Array(nebulaCount * 3);
+    for (let i = 0; i < nebulaCount; i++) {
+      const idx = i * 3;
+      // Clustered around upper northwest sky
+      nebulaPos[idx] = -160 + (Math.random() - 0.5) * 110;
+      nebulaPos[idx + 1] = 150 + (Math.random() - 0.5) * 80;
+      nebulaPos[idx + 2] = -180 + (Math.random() - 0.5) * 110;
+
+      // Subtle hydrogen alpha pink & rose hues
+      nebulaColors[idx] = 0.85 + Math.random() * 0.15;
+      nebulaColors[idx + 1] = 0.25 + Math.random() * 0.20;
+      nebulaColors[idx + 2] = 0.45 + Math.random() * 0.25;
+    }
+    nebulaGeo.setAttribute('position', new THREE.BufferAttribute(nebulaPos, 3));
+    nebulaGeo.setAttribute('color', new THREE.BufferAttribute(nebulaColors, 3));
+    const nebulaMat = new THREE.PointsMaterial({ 
+      size: 16.0, 
+      vertexColors: true, 
+      transparent: true, 
+      opacity: 0.14,
+      depthWrite: false,
+    });
+    const emissionNebula = new THREE.Points(nebulaGeo, nebulaMat);
+    celestialGroup.add(emissionNebula);
+
+    // Reflection Nebula (Pleiades style interstellar dust)
+    const refNebulaCount = 140;
+    const refNebulaGeo = new THREE.BufferGeometry();
+    const refNebulaPos = new Float32Array(refNebulaCount * 3);
+    for (let i = 0; i < refNebulaCount * 3; i += 3) {
+      refNebulaPos[i] = 150 + (Math.random() - 0.5) * 90;
+      refNebulaPos[i + 1] = 160 + (Math.random() - 0.5) * 70;
+      refNebulaPos[i + 2] = -150 + (Math.random() - 0.5) * 90;
+    }
+    refNebulaGeo.setAttribute('position', new THREE.BufferAttribute(refNebulaPos, 3));
+    const refNebulaMat = new THREE.PointsMaterial({ 
+      color: 0x38bdf8, 
+      size: 18.0, 
+      transparent: true, 
+      opacity: 0.11,
+      depthWrite: false,
+    });
+    const reflectionNebula = new THREE.Points(refNebulaGeo, refNebulaMat);
+    celestialGroup.add(reflectionNebula);
+
+    // 3. Interactive Rotating Planetary System
+    const planetsGroup = new THREE.Group();
+    planetsGroupRef.current = planetsGroup;
+    celestialGroup.add(planetsGroup);
+
+    // Shared sphere geometry for performance
+    const planetSphereGeo = new THREE.SphereGeometry(1, 32, 32);
+
+    // A. Planet Earth (Blue Marble with Atmosphere & Clouds)
+    const earthGroup = new THREE.Group();
+    earthGroup.position.set(-75, 62, -100);
+    earthGroup.scale.set(5.2, 5.2, 5.2);
+    earthGroup.userData = { 
+      type: 'planet', 
+      planetId: 'earth', 
+      title: CELESTIAL_BODIES.earth.name, 
+      category: CELESTIAL_BODIES.earth.category 
+    };
+
+    const earthMat = new THREE.MeshStandardMaterial({
+      map: getEarthTexture(),
+      roughness: 0.65,
+      metalness: 0.1,
+    });
+    const earthMesh = new THREE.Mesh(planetSphereGeo, earthMat);
+    earthMesh.userData = { ...earthGroup.userData };
+    earthMeshRef.current = earthMesh;
+    earthGroup.add(earthMesh);
+
+    // Earth cloud layer
+    const earthCloudsMat = new THREE.MeshStandardMaterial({
+      map: getEarthCloudsTexture(),
+      transparent: true,
+      opacity: 0.65,
+      roughness: 1.0,
+      depthWrite: false,
+    });
+    const earthClouds = new THREE.Mesh(planetSphereGeo, earthCloudsMat);
+    earthClouds.scale.set(1.02, 1.02, 1.02);
+    earthCloudsMeshRef.current = earthClouds;
+    earthGroup.add(earthClouds);
+
+    // Earth Rayleigh scattering atmospheric limb
+    const earthHaloGeo = new THREE.RingGeometry(1.03, 1.25, 32);
+    const earthHaloMat = new THREE.MeshBasicMaterial({
+      color: 0x60a5fa,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
+    });
+    const earthHalo = new THREE.Mesh(earthHaloGeo, earthHaloMat);
+    earthHalo.lookAt(camera.position);
+    earthGroup.add(earthHalo);
+
+    planetsGroup.add(earthGroup);
+    interactiveObjectsRef.current.push(earthMesh);
+
+    // B. The Moon (visible in Mars campaign or as companion)
+    if (!isMoon) {
+      const moonGroup = new THREE.Group();
+      moonGroup.position.set(-62, 58, -92);
+      moonGroup.scale.set(1.4, 1.4, 1.4);
+      moonGroup.userData = { 
+        type: 'planet', 
+        planetId: 'moon', 
+        title: CELESTIAL_BODIES.moon.name, 
+        category: CELESTIAL_BODIES.moon.category 
+      };
+
+      const moonMat = new THREE.MeshStandardMaterial({
+        color: 0x94a3b8,
+        roughness: 0.95,
+        metalness: 0.05,
+      });
+      const moonMesh = new THREE.Mesh(planetSphereGeo, moonMat);
+      moonMesh.userData = { ...moonGroup.userData };
+      moonGroup.add(moonMesh);
+      planetsGroup.add(moonGroup);
+      interactiveObjectsRef.current.push(moonMesh);
+    }
+
+    // C. Planet Mars (The Red Planet with Polar Caps)
+    if (isMoon) {
+      const marsGroup = new THREE.Group();
+      marsGroup.position.set(95, 78, -120);
+      marsGroup.scale.set(3.2, 3.2, 3.2);
+      marsGroup.userData = { 
+        type: 'planet', 
+        planetId: 'mars', 
+        title: CELESTIAL_BODIES.mars.name, 
+        category: CELESTIAL_BODIES.mars.category 
+      };
+
+      const marsMat = new THREE.MeshStandardMaterial({
+        map: getMarsTexture(),
+        roughness: 0.85,
+        metalness: 0.05,
+      });
+      const marsMesh = new THREE.Mesh(planetSphereGeo, marsMat);
+      marsMesh.userData = { ...marsGroup.userData };
+      marsMeshRef.current = marsMesh;
+      marsGroup.add(marsMesh);
+
+      // Mars thin atmospheric haze
+      const marsHaloGeo = new THREE.RingGeometry(1.02, 1.14, 32);
+      const marsHaloMat = new THREE.MeshBasicMaterial({
+        color: 0xf97316,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+      });
+      const marsHalo = new THREE.Mesh(marsHaloGeo, marsHaloMat);
+      marsHalo.lookAt(camera.position);
+      marsGroup.add(marsHalo);
+
+      planetsGroup.add(marsGroup);
+      interactiveObjectsRef.current.push(marsMesh);
+    }
+
+    // D. Planet Jupiter (Banded Gas Giant with Great Red Spot & Galilean Moons)
+    const jupiterGroup = new THREE.Group();
+    jupiterGroup.position.set(-110, 85, 45);
+    jupiterGroup.scale.set(7.5, 7.5, 7.5);
+    jupiterGroup.userData = { 
+      type: 'planet', 
+      planetId: 'jupiter', 
+      title: CELESTIAL_BODIES.jupiter.name, 
+      category: CELESTIAL_BODIES.jupiter.category 
+    };
+
+    const jupiterMat = new THREE.MeshStandardMaterial({
+      map: getJupiterTexture(),
+      roughness: 0.7,
+      metalness: 0.05,
+    });
+    const jupiterMesh = new THREE.Mesh(planetSphereGeo, jupiterMat);
+    jupiterMesh.userData = { ...jupiterGroup.userData };
+    jupiterMeshRef.current = jupiterMesh;
+    jupiterGroup.add(jupiterMesh);
+
+    // 4 Galilean Moon specks (Io, Europa, Ganymede, Callisto)
+    const moonSpeckGeo = new THREE.SphereGeometry(0.06, 8, 8);
+    const moonSpeckMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+    const jupiterMoons = [
+      { dist: 1.8, angle: 0.4 },
+      { dist: 2.3, angle: 1.8 },
+      { dist: 3.1, angle: 3.4 },
+      { dist: 4.0, angle: 4.9 },
+    ];
+    jupiterMoons.forEach((mConfig) => {
+      const moonSpeck = new THREE.Mesh(moonSpeckGeo, moonSpeckMat);
+      moonSpeck.position.set(Math.cos(mConfig.angle) * mConfig.dist, Math.sin(mConfig.angle) * 0.2, Math.sin(mConfig.angle) * mConfig.dist);
+      jupiterGroup.add(moonSpeck);
+    });
+
+    planetsGroup.add(jupiterGroup);
+    interactiveObjectsRef.current.push(jupiterMesh);
+
+    // E. Planet Saturn (Golden Gas Giant with 3D Rings)
+    const saturnGroup = new THREE.Group();
+    saturnGroup.position.set(105, 92, 65);
+    saturnGroup.scale.set(5.8, 5.8, 5.8);
+    saturnGroup.rotation.z = 0.45; // Axial tilt ~26.7 degrees
+    saturnGroup.userData = { 
+      type: 'planet', 
+      planetId: 'saturn', 
+      title: CELESTIAL_BODIES.saturn.name, 
+      category: CELESTIAL_BODIES.saturn.category 
+    };
+
+    const saturnMat = new THREE.MeshStandardMaterial({
+      map: getSaturnTexture(),
+      roughness: 0.75,
+      metalness: 0.05,
+    });
+    const saturnMesh = new THREE.Mesh(planetSphereGeo, saturnMat);
+    saturnMesh.userData = { ...saturnGroup.userData };
+    saturnMeshRef.current = saturnMesh;
+    saturnGroup.add(saturnMesh);
+
+    // 3D Saturn Rings with Cassini division
+    const saturnRingGeo = new THREE.RingGeometry(1.24, 2.35, 48);
+    const saturnRingMat = new THREE.MeshStandardMaterial({
+      map: getSaturnRingTexture(),
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.92,
+      roughness: 0.6,
+      depthWrite: false,
+    });
+    const saturnRings = new THREE.Mesh(saturnRingGeo, saturnRingMat);
+    saturnRings.rotation.x = Math.PI / 2;
+    saturnRingsMeshRef.current = saturnRings;
+    saturnGroup.add(saturnRings);
+
+    planetsGroup.add(saturnGroup);
+    interactiveObjectsRef.current.push(saturnMesh);
+
+    // 4. Occasional Shooting Stars / Meteors Pool
+    const shootingStars: { line: THREE.Line; velocity: THREE.Vector3; life: number; maxLife: number }[] = [];
+    const meteorLineGeo = new THREE.BufferGeometry();
+    meteorLineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0, -4, 2, -6]), 3));
+    const meteorLineColors = new Float32Array([
+      1.0, 1.0, 1.0, // White head
+      0.3, 0.6, 1.0, // Cyan/blue ionized trail
+    ]);
+    meteorLineGeo.setAttribute('color', new THREE.BufferAttribute(meteorLineColors, 3));
+
+    for (let s = 0; s < 3; s++) {
+      const meteorMat = new THREE.LineBasicMaterial({ 
+        vertexColors: true, 
+        transparent: true, 
+        opacity: 0, 
+        linewidth: 2 
+      });
+      const meteorLine = new THREE.Line(meteorLineGeo, meteorMat);
+      meteorLine.visible = false;
+      celestialGroup.add(meteorLine);
+      shootingStars.push({
+        line: meteorLine,
+        velocity: new THREE.Vector3(-1.2, -0.6, 1.4),
+        life: 0,
+        maxLife: 60,
+      });
+    }
+    shootingStarsRef.current = shootingStars;
+
+    // Solar Storm Cosmic Particles (ECLSS space weather event)
+    const stormCount = 400;
     const stormGeo = new THREE.BufferGeometry();
     const stormPos = new Float32Array(stormCount * 3);
     for (let i = 0; i < stormCount * 3; i += 3) {
@@ -187,7 +555,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       stormPos[i + 2] = (Math.random() - 0.5) * 90;
     }
     stormGeo.setAttribute('position', new THREE.BufferAttribute(stormPos, 3));
-    const stormMat = new THREE.PointsMaterial({ color: 0x00f2fe, size: 1.0, transparent: true, opacity: 0.0 });
+    const stormMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.9, transparent: true, opacity: 0.0 });
     const stormParticles = new THREE.Points(stormGeo, stormMat);
     stormParticlesRef.current = stormParticles;
     scene.add(stormParticles);
@@ -252,9 +620,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     pad.receiveShadow = true;
     scene.add(pad);
 
-    // Foundation Decals (Hex grid pattern rings)
+    // Foundation Decals (Realistic landing perimeter hazard marker)
     const ringGeo = new THREE.RingGeometry(11, 13, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe, side: THREE.DoubleSide, transparent: true, opacity: 0.35 });
+    const ringMat = new THREE.MeshStandardMaterial({ 
+      color: 0x475569, 
+      side: THREE.DoubleSide, 
+      roughness: 0.8, 
+      metalness: 0.25 
+    });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(0, 0.42, 0);
@@ -272,15 +645,21 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     habGroupRef.current = habGroup;
 
     const domeGeo = new THREE.SphereGeometry(5.6, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    const domeMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.3, metalness: 0.65 });
+    const domeMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.35, metalness: 0.55 });
     const dome = new THREE.Mesh(domeGeo, domeMat);
     dome.castShadow = true;
     dome.receiveShadow = true;
     habGroup.add(dome);
 
-    // Dome Viewports (Observation Windows with glow)
+    // Dome Viewports (Observation Windows with realistic warm interior glow & gold optical film)
     const windowGeo = new THREE.SphereGeometry(5.63, 16, 8, 0.5, 0.8, 0.7, 0.6);
-    const windowMat = new THREE.MeshStandardMaterial({ color: 0x00f2fe, emissive: 0x00a3cc, emissiveIntensity: 0.85, roughness: 0.1 });
+    const windowMat = new THREE.MeshStandardMaterial({ 
+      color: 0xd97706, 
+      emissive: 0x78350f, 
+      emissiveIntensity: 0.35, 
+      roughness: 0.2, 
+      metalness: 0.8 
+    });
     const windowMesh = new THREE.Mesh(windowGeo, windowMat);
     habGroup.add(windowMesh);
 
@@ -311,10 +690,10 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     scene.add(habGroup);
     interactiveObjectsRef.current.push(dome);
 
-    // Habitat Lights Group (night floodlights)
+    // Habitat Lights Group (warm white/amber mast strobe beacon)
     const habLightsGroup = new THREE.Group();
     habitatLightsGroupRef.current = habLightsGroup;
-    const domeBeacon = new THREE.PointLight(0x00f2fe, 1.6, 28);
+    const domeBeacon = new THREE.PointLight(0xfef08a, 1.2, 24);
     domeBeacon.position.set(0, 6.8, 0);
     habLightsGroup.add(domeBeacon);
     scene.add(habLightsGroup);
@@ -326,15 +705,15 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     waterRecyclerGroupRef.current = waterGroup;
 
     const tankGeo = new THREE.CylinderGeometry(1.2, 1.3, 3.8, 16);
-    const tankMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.7, roughness: 0.3 });
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.7, roughness: 0.4 });
     const tank = new THREE.Mesh(tankGeo, tankMat);
     tank.position.y = 1.9;
     tank.castShadow = true;
     waterGroup.add(tank);
 
-    // Blue fluid conduit pipe
+    // Insulated aerospace fluid conduit pipe
     const pipeGeo = new THREE.TorusGeometry(1.8, 0.1, 8, 16, Math.PI);
-    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x60a5fa, emissive: 0x2563eb, emissiveIntensity: 0.6 });
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.35, metalness: 0.8 });
     const pipe = new THREE.Mesh(pipeGeo, pipeMat);
     pipe.rotation.y = Math.PI / 2;
     pipe.position.set(0, 2.5, 0);
@@ -480,9 +859,56 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       camera.position.set(camX, Math.max(2.5, camY), camZ);
       camera.lookAt(m.currentLookAt);
 
-      // Earth slow rotation
+      // Planetary axial rotations
+      const isMotionReduced = isReducedMotionRef.current;
+      const speedMult = isMotionReduced ? 0.2 : 1.0;
+
       if (earthMeshRef.current) {
-        earthMeshRef.current.rotation.y = elapsedTime * 0.02;
+        earthMeshRef.current.rotation.y = elapsedTime * 0.018 * speedMult;
+      }
+      if (earthCloudsMeshRef.current) {
+        earthCloudsMeshRef.current.rotation.y = elapsedTime * 0.024 * speedMult;
+      }
+      if (marsMeshRef.current) {
+        marsMeshRef.current.rotation.y = elapsedTime * 0.016 * speedMult;
+      }
+      if (jupiterMeshRef.current) {
+        jupiterMeshRef.current.rotation.y = elapsedTime * 0.032 * speedMult;
+      }
+      if (saturnMeshRef.current) {
+        saturnMeshRef.current.rotation.y = elapsedTime * 0.028 * speedMult;
+      }
+
+      // Shooting stars animation (periodic cosmic meteors)
+      if (!isMotionReduced && shootingStarsRef.current.length > 0) {
+        // Randomly trigger meteor streak every ~5 seconds
+        if (Math.random() < 0.006) {
+          const inactive = shootingStarsRef.current.find(s => s.life <= 0);
+          if (inactive) {
+            inactive.life = inactive.maxLife;
+            // Spawn in upper sky dome
+            const theta = Math.random() * Math.PI * 2;
+            const r = 180 + Math.random() * 80;
+            const startX = Math.cos(theta) * r;
+            const startY = 130 + Math.random() * 60;
+            const startZ = Math.sin(theta) * r;
+            inactive.line.position.set(startX, startY, startZ);
+            inactive.line.visible = true;
+          }
+        }
+
+        shootingStarsRef.current.forEach((s) => {
+          if (s.life > 0) {
+            s.life--;
+            s.line.position.add(s.velocity);
+            const alpha = Math.sin((s.life / s.maxLife) * Math.PI);
+            (s.line.material as THREE.LineBasicMaterial).opacity = Math.max(0, alpha * 0.9);
+            if (s.life <= 0) {
+              s.line.visible = false;
+              (s.line.material as THREE.LineBasicMaterial).opacity = 0;
+            }
+          }
+        });
       }
 
       // Subtle solar array sun-tracking orientation
@@ -540,7 +966,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           let currentObj: THREE.Object3D | null = intersects[0].object;
           let foundData = null;
           while (currentObj && !foundData) {
-            if (currentObj.userData && (currentObj.userData.title || currentObj.userData.buildingType)) {
+            if (currentObj.userData && (currentObj.userData.title || currentObj.userData.buildingType || currentObj.userData.planetId)) {
               foundData = currentObj.userData;
               break;
             }
@@ -548,7 +974,10 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           }
 
           if (foundData) {
-            setHoveredEntity({ title: foundData.title || 'Structure', category: foundData.category || 'System' });
+            setHoveredEntity({ 
+              title: foundData.title || (foundData.type === 'planet' ? CELESTIAL_BODIES[foundData.planetId]?.name : 'Structure') || 'Structure', 
+              category: foundData.category || (foundData.type === 'planet' ? 'Celestial Body' : 'System') || 'System' 
+            });
             if (container) container.style.cursor = 'pointer';
           }
         } else {
@@ -574,6 +1003,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       const rect = container.getBoundingClientRect();
       mousePosRef.current.x = ((e.clientX - rect.left) / container.clientWidth) * 2 - 1;
       mousePosRef.current.y = -((e.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+      // Gentle pointer-responsive cosmic parallax
+      if (celestialGroupRef.current) {
+        celestialGroupRef.current.position.x = mousePosRef.current.x * 2.4;
+        celestialGroupRef.current.position.y = mousePosRef.current.y * 1.5;
+      }
 
       if (!mouseStateRef.current.isDragging) return;
       const deltaX = e.clientX - mouseStateRef.current.prevX;
@@ -602,7 +1037,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         let currentObj: THREE.Object3D | null = intersects[0].object;
         let foundData = null;
         while (currentObj && !foundData) {
-          if (currentObj.userData && (currentObj.userData.buildingType || currentObj.userData.astronautId)) {
+          if (currentObj.userData && (currentObj.userData.buildingType || currentObj.userData.astronautId || currentObj.userData.planetId)) {
             foundData = currentObj.userData;
             break;
           }
@@ -611,7 +1046,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
         if (foundData) {
           audioSystem.playClick();
-          if (foundData.type === 'astronaut' && onSelectAstronaut) {
+          if (foundData.type === 'planet') {
+            const planetInfo = CELESTIAL_BODIES[foundData.planetId];
+            if (planetInfo) {
+              setSelectedPlanet(planetInfo);
+              setPresetView(foundData.planetId as any);
+            }
+          } else if (foundData.type === 'astronaut' && onSelectAstronaut) {
             onSelectAstronaut(foundData.astronautId);
           } else if (foundData.buildingType && onSelectBuilding) {
             onSelectBuilding(foundData.buildingType as InspectableBuildingType);
@@ -620,10 +1061,70 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       }
     };
 
+    // Touch Controls for Mobile Devices
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let initialPinchDist = 0;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        mouseStateRef.current.isDragging = true;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        mouseStateRef.current.prevX = touchStartX;
+        mouseStateRef.current.prevY = touchStartY;
+
+        const rect = container.getBoundingClientRect();
+        mousePosRef.current.x = ((touchStartX - rect.left) / container.clientWidth) * 2 - 1;
+        mousePosRef.current.y = -((touchStartY - rect.top) / container.clientHeight) * 2 + 1;
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        initialPinchDist = Math.sqrt(dx * dx + dy * dy);
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1 && mouseStateRef.current.isDragging) {
+        const clientX = e.touches[0].clientX;
+        const clientY = e.touches[0].clientY;
+        const deltaX = clientX - mouseStateRef.current.prevX;
+        const deltaY = clientY - mouseStateRef.current.prevY;
+        mouseStateRef.current.prevX = clientX;
+        mouseStateRef.current.prevY = clientY;
+
+        mouseStateRef.current.rotationY -= deltaX * 0.007;
+        mouseStateRef.current.rotationX = Math.min(
+          Math.PI / 2.2,
+          Math.max(0.08, mouseStateRef.current.rotationX + deltaY * 0.007)
+        );
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const currentDist = Math.sqrt(dx * dx + dy * dy);
+        const diff = initialPinchDist - currentDist;
+        initialPinchDist = currentDist;
+        mouseStateRef.current.targetDistance = Math.min(
+          95,
+          Math.max(14, mouseStateRef.current.targetDistance + diff * 0.15)
+        );
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        mouseStateRef.current.isDragging = false;
+        // Trigger tap click if motion was subtle tap
+        if (Math.abs(mouseStateRef.current.prevX - touchStartX) < 8 && Math.abs(mouseStateRef.current.prevY - touchStartY) < 8) {
+          handleClick();
+        }
+      }
+    };
+
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       mouseStateRef.current.targetDistance = Math.min(
-        90,
+        95,
         Math.max(14, mouseStateRef.current.targetDistance + e.deltaY * 0.05)
       );
     };
@@ -637,12 +1138,32 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       rendererRef.current.setSize(w, h);
     };
 
+    // Visibility Change API: Pause rendering when page is hidden to conserve power and battery
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animFrameRef.current) {
+          cancelAnimationFrame(animFrameRef.current);
+          animFrameRef.current = null;
+        }
+      } else {
+        if (!animFrameRef.current) {
+          clock.start();
+          animate();
+        }
+      }
+    };
+
     container.addEventListener('mousedown', handleMouseDown);
     container.addEventListener('click', handleClick);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     container.addEventListener('wheel', handleWheel, { passive: false });
     window.addEventListener('resize', handleResize);
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       isSubscribed = false;
@@ -653,6 +1174,11 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       window.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('wheel', handleWheel);
       window.removeEventListener('resize', handleResize);
+
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // Clean up lander model instance
       if (landerGroupRef.current) {
@@ -1072,7 +1598,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   }, [gameState]);
 
   // Camera preset transitions with smooth animated targets
-  const setPresetView = (view: 'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter') => {
+  const setPresetView = (view: 'orbital' | 'habitat' | 'solar' | 'greenhouse' | 'lander' | 'water' | 'shelter' | 'earth' | 'mars' | 'jupiter' | 'saturn') => {
     setCameraView(view);
     audioSystem.playClick();
     const m = mouseStateRef.current;
@@ -1119,10 +1645,46 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         m.rotationY = -2.2;
         m.targetDistance = 24;
         break;
+      case 'earth':
+        m.targetLookAt.set(-75, 62, -100);
+        m.rotationX = 0.52;
+        m.rotationY = 2.45;
+        m.targetDistance = 58;
+        break;
+      case 'mars':
+        m.targetLookAt.set(95, 78, -120);
+        m.rotationX = 0.58;
+        m.rotationY = -0.92;
+        m.targetDistance = 58;
+        break;
+      case 'jupiter':
+        m.targetLookAt.set(-110, 85, 45);
+        m.rotationX = 0.62;
+        m.rotationY = 3.55;
+        m.targetDistance = 64;
+        break;
+      case 'saturn':
+        m.targetLookAt.set(105, 92, 65);
+        m.rotationX = 0.60;
+        m.rotationY = -0.65;
+        m.targetDistance = 64;
+        break;
     }
   };
 
   const isNight = !gameState.isDaylight;
+
+  if (!isWebGlSupported) {
+    return (
+      <div className="w-full h-80 sm:h-96 md:h-[440px] rounded-2xl border border-slate-800 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center text-slate-200 space-y-3">
+        <AlertTriangle className="w-10 h-10 text-amber-400" />
+        <h3 className="text-lg font-bold text-white">3D Hardware Acceleration Offline</h3>
+        <p className="text-xs text-slate-400 max-w-md">
+          WebGL context is currently unavailable in this environment. All life support models, mission simulations, and base operations remain active in telemetry mode.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={`relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 transition-all ${
@@ -1134,18 +1696,18 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
       {/* Top Left HUD Telemetry Overlay */}
       <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2 pointer-events-none">
-        <div className="bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs flex items-center gap-2 shadow-2xl">
+        <div className="bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs flex items-center gap-2 shadow-2xl">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span className="font-extrabold text-white tracking-wider">3D LUNAR OUTPOST VIEWPORT</span>
+          <span className="font-extrabold text-white tracking-wider">3D CELESTIAL & OUTPOST VIEWPORT</span>
           <span className="text-[10px] text-slate-400 font-mono">
-            {gameState.campaign === 'moon' ? 'Shackleton Crater Rim' : 'Acidalia Planitia'}
+            {gameState.campaign === 'moon' ? 'Shackleton Crater Rim • Moon' : 'Acidalia Planitia • Mars'}
           </span>
         </div>
 
         <div className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md ${
           isNight
-            ? 'bg-indigo-950/80 text-indigo-300 border-indigo-500/40'
-            : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+            ? 'bg-slate-900/90 text-indigo-300 border-indigo-500/40'
+            : 'bg-slate-900/90 text-amber-300 border-amber-500/40'
         }`}>
           {isNight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
           <span>{isNight ? 'Lunar Night (Earthlight Only)' : 'Solar Daylight Active'}</span>
@@ -1161,11 +1723,11 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
       {/* Hovered Entity Floating Crosshair Tooltip */}
       {hoveredEntity && (
-        <div className="absolute top-14 left-3 pointer-events-none bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-cyan-500/50 shadow-glow-cyan text-xs flex items-center gap-2 animate-in fade-in duration-100">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
+        <div className="absolute top-14 left-3 pointer-events-none bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-700 shadow-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-100">
+          <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
           <div>
-            <div className="text-[10px] font-mono text-cyan-400 uppercase font-bold">{hoveredEntity.category}</div>
-            <div className="text-xs font-bold text-white flex items-center gap-1">
+            <div className="text-[10px] font-mono text-sky-400 uppercase font-bold tracking-wider">{hoveredEntity.category}</div>
+            <div className="text-xs font-bold text-white flex items-center gap-1.5 mt-0.5">
               <span>{hoveredEntity.title}</span>
               <span className="text-[10px] text-slate-400 font-normal">• Click to Inspect</span>
             </div>
@@ -1174,9 +1736,9 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       )}
 
       {/* Top Right Controls (Camera Presets & Fullscreen) */}
-      <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl">
+      <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl">
         
-        {/* Preset Selector */}
+        {/* Outpost Preset Selector */}
         <div className="hidden sm:flex items-center gap-1 mr-1">
           {(['orbital', 'habitat', 'solar', 'greenhouse', 'water', 'shelter', 'lander'] as const).map(preset => (
             <button
@@ -1184,11 +1746,33 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
               onClick={() => setPresetView(preset)}
               className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase transition ${
                 cameraView === preset
-                  ? 'bg-cyan-500 text-slate-950 shadow-glow-cyan'
+                  ? 'bg-sky-500 text-slate-950 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
               {preset}
+            </button>
+          ))}
+        </div>
+
+        {/* Planet Presets Divider & Quick Selector */}
+        <div className="hidden lg:flex items-center gap-1 pl-1 border-l border-slate-800 mr-1">
+          <Globe2 className="w-3 h-3 text-sky-400 ml-1 shrink-0" />
+          {(['earth', 'mars', 'jupiter', 'saturn'] as const).map(planet => (
+            <button
+              key={planet}
+              onClick={() => {
+                setPresetView(planet);
+                setSelectedPlanet(CELESTIAL_BODIES[planet]);
+              }}
+              title={`Focus ${CELESTIAL_BODIES[planet]?.name || planet}`}
+              className={`px-1.5 py-1 rounded-md text-[9px] font-bold uppercase transition ${
+                cameraView === planet
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              {planet}
             </button>
           ))}
         </div>
@@ -1214,10 +1798,10 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       </div>
 
       {/* Bottom Hint Bar */}
-      <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[10px] text-slate-400 pointer-events-none bg-slate-950/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800/80">
+      <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[10px] text-slate-400 pointer-events-none bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-800/80">
         <div className="flex items-center gap-2">
-          <Eye className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-          <span>Click any 3D building or astronaut to inspect and command • Drag to orbit • Scroll to zoom</span>
+          <Eye className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+          <span>Click any 3D structure, astronaut, or planet in the sky to inspect • Drag to orbit • Scroll / pinch to zoom</span>
         </div>
         <div className="font-mono text-slate-300 hidden md:flex items-center gap-2">
           <span>Arrays: {gameState.infrastructure.solarArrays}</span>
@@ -1227,6 +1811,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           <span>Battery: {gameState.resources.batteryCapacityKwh} kWh</span>
         </div>
       </div>
+
+      {/* Planet Inspector Modal */}
+      <PlanetInspectorModal
+        planet={selectedPlanet}
+        onClose={() => setSelectedPlanet(null)}
+      />
 
     </div>
   );
