@@ -44,8 +44,53 @@ export const MissionReviewModal: React.FC<MissionReviewModalProps> = ({
 
   if (!isOpen) return null;
 
-  const { scoreBreakdown, campaign, dailyHistory, crew, objectives, instructorLogs } = gameState;
+  const { scoreBreakdown, campaign, dailyHistory, crew, objectives, instructorLogs, eventHistory } = gameState;
   const profile = LEARNING_PROFILES[learningProfile];
+
+  // Combine instructorLogs and resolved eventHistory into a unified, non-duplicated timeline
+  interface UnifiedTimelineEntry {
+    id: string;
+    day: number;
+    title: string;
+    message: string;
+    category: 'warning' | 'kudos' | 'critical' | 'event' | 'info';
+    detail?: string;
+  }
+
+  const unifiedTimeline: UnifiedTimelineEntry[] = [];
+
+  // Add instructor logs
+  instructorLogs.forEach((log, idx) => {
+    unifiedTimeline.push({
+      id: `log-${log.day}-${idx}`,
+      day: log.day,
+      title: log.title,
+      message: log.message,
+      category: log.category === 'warning' ? 'warning' : log.category === 'kudos' ? 'kudos' : 'info',
+      detail: log.recommendation ? `Directive: ${log.recommendation}` : undefined,
+    });
+  });
+
+  // Add events from eventHistory that aren't already represented identically
+  eventHistory?.forEach(evt => {
+    const isDuplicate = unifiedTimeline.some(
+      entry => entry.day === evt.day && entry.title.toLowerCase().includes(evt.title.toLowerCase().slice(0, 15))
+    );
+    if (!isDuplicate) {
+      const chosenChoice = evt.choices.find(c => c.id === evt.chosenOptionId);
+      unifiedTimeline.push({
+        id: `evt-${evt.id}`,
+        day: evt.day,
+        title: evt.title,
+        message: evt.description,
+        category: evt.severity === 'critical' ? 'critical' : 'event',
+        detail: chosenChoice ? `Commander Decision: ${chosenChoice.label} — ${chosenChoice.effectDescription}` : evt.scientificExplanation,
+      });
+    }
+  });
+
+  // Sort timeline descending by day (latest first)
+  unifiedTimeline.sort((a, b) => b.day - a.day);
 
   // Calculate high-level statistics from dailyHistory
   const totalDaysSimulated = dailyHistory.length;
@@ -527,30 +572,34 @@ export const MissionReviewModal: React.FC<MissionReviewModalProps> = ({
           {activeTab === 'timeline' && (
             <div className="space-y-3 animate-fadeIn">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                Recorded Mission Events & Instructor Logs ({instructorLogs.length} Entries)
+                Recorded Mission Events & Instructor Logs ({unifiedTimeline.length} Entries)
               </span>
 
               <div className="space-y-2">
-                {instructorLogs.slice().reverse().map((log, idx) => (
+                {unifiedTimeline.map((item) => (
                   <div
-                    key={idx}
+                    key={item.id}
                     className={`p-3 rounded-xl border text-xs transition ${
-                      log.category === 'warning'
+                      item.category === 'critical'
+                        ? 'bg-rose-950/30 border-rose-800/80 text-rose-200'
+                        : item.category === 'warning'
                         ? 'bg-amber-950/30 border-amber-800/80 text-amber-200'
-                        : log.category === 'kudos'
+                        : item.category === 'kudos'
                         ? 'bg-emerald-950/30 border-emerald-800/80 text-emerald-200'
+                        : item.category === 'event'
+                        ? 'bg-cyan-950/30 border-cyan-800/80 text-cyan-200'
                         : 'bg-slate-950 border-slate-800 text-slate-300'
                     }`}
                   >
                     <div className="flex items-center justify-between font-mono text-[10px] mb-1">
-                      <span className="font-bold text-cyan-400">MISSION DAY {log.day}</span>
-                      <span className="uppercase text-slate-400 font-bold">{log.category}</span>
+                      <span className="font-bold text-cyan-400">MISSION DAY {item.day}</span>
+                      <span className="uppercase text-slate-400 font-bold">{item.category}</span>
                     </div>
-                    <div className="font-bold text-white text-xs mb-0.5">{log.title}</div>
-                    <p className="leading-relaxed font-sans">{log.message}</p>
-                    {log.recommendation && (
+                    <div className="font-bold text-white text-xs mb-0.5">{item.title}</div>
+                    <p className="leading-relaxed font-sans">{item.message}</p>
+                    {item.detail && (
                       <div className="mt-1.5 pt-1.5 border-t border-slate-800/80 text-[11px] text-cyan-300 font-sans">
-                        💡 Directive: {log.recommendation}
+                        💡 {item.detail}
                       </div>
                     )}
                   </div>

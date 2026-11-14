@@ -57,6 +57,7 @@ export const App: React.FC = () => {
   const [isResearchModalOpen, setIsResearchModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [hasDismissedEndOverlay, setHasDismissedEndOverlay] = useState(false);
   const [isExperimentsModalOpen, setIsExperimentsModalOpen] = useState(false);
   const [isBadgesModalOpen, setIsBadgesModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -87,6 +88,13 @@ export const App: React.FC = () => {
       audioSystem.playAlarm();
     }
   }, [gameState.activeEvents.length]);
+
+  const handleStartNewMission = (campaign: any, difficulty?: any) => {
+    setHasDismissedEndOverlay(false);
+    setIsDebriefModalOpen(false);
+    setIsReviewModalOpen(false);
+    startNewMission(campaign, difficulty);
+  };
 
   const handleAdvanceDay = () => {
     audioSystem.playTelemetryClick();
@@ -146,10 +154,13 @@ export const App: React.FC = () => {
         learningProfile={learningProfile}
         onTogglePlay={() => setIsPlaying(!isPlaying)}
         onAdvanceDay={handleAdvanceDay}
-        onReset={() => startNewMission(gameState.campaign, gameState.difficulty)}
+        onReset={() => handleStartNewMission(gameState.campaign, gameState.difficulty)}
         onOpenCampaignModal={() => setIsCampaignModalOpen(true)}
         onOpenResearchModal={() => setIsResearchModalOpen(true)}
-        onOpenDebriefModal={() => setIsDebriefModalOpen(true)}
+        onOpenDebriefModal={() => {
+          setHasDismissedEndOverlay(false);
+          setIsDebriefModalOpen(true);
+        }}
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
         onOpenExperimentsModal={() => setIsExperimentsModalOpen(true)}
         onOpenBadgesModal={() => setIsBadgesModalOpen(true)}
@@ -412,16 +423,19 @@ export const App: React.FC = () => {
         gameState={gameState}
         isOpen={isCampaignModalOpen}
         onClose={() => setIsCampaignModalOpen(false)}
-        onSelectCampaign={startNewMission}
+        onSelectCampaign={handleStartNewMission}
       />
 
       {/* Mission Debrief Modal */}
       <MissionDebriefModal
         gameState={gameState}
-        isOpen={isDebriefModalOpen || gameState.isMissionOver}
-        onClose={() => setIsDebriefModalOpen(false)}
-        onRestart={() => startNewMission(gameState.campaign, gameState.difficulty)}
-        onLaunchMars={() => startNewMission('mars', gameState.difficulty)}
+        isOpen={(isDebriefModalOpen || gameState.isMissionOver) && !hasDismissedEndOverlay && !isReviewModalOpen}
+        onClose={() => {
+          setHasDismissedEndOverlay(true);
+          setIsDebriefModalOpen(false);
+        }}
+        onRestart={() => handleStartNewMission(gameState.campaign, gameState.difficulty)}
+        onLaunchMars={() => handleStartNewMission('mars', gameState.difficulty)}
         onOpenReviewData={() => {
           setIsDebriefModalOpen(false);
           setIsReviewModalOpen(true);
@@ -431,18 +445,20 @@ export const App: React.FC = () => {
       {/* Complete Mission Review & Analytics Modal */}
       <MissionReviewModal
         isOpen={isReviewModalOpen}
-        onClose={() => setIsReviewModalOpen(false)}
+        onClose={() => {
+          setHasDismissedEndOverlay(true);
+          setIsReviewModalOpen(false);
+        }}
         onBackToDebrief={() => {
           setIsReviewModalOpen(false);
+          setHasDismissedEndOverlay(false);
           setIsDebriefModalOpen(true);
         }}
         onRestart={() => {
-          setIsReviewModalOpen(false);
-          startNewMission(gameState.campaign, gameState.difficulty);
+          handleStartNewMission(gameState.campaign, gameState.difficulty);
         }}
         onLaunchMars={() => {
-          setIsReviewModalOpen(false);
-          startNewMission('mars', gameState.difficulty);
+          handleStartNewMission('mars', gameState.difficulty);
         }}
         gameState={gameState}
         learningProfile={learningProfile}
