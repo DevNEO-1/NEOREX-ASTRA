@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSimulator } from './hooks/useSimulator';
 import { checkResourceWarnings } from './simulator/resources';
 import { Header } from './components/Header';
@@ -13,6 +13,10 @@ import { EventModal } from './components/EventModal';
 import { CampaignSelector } from './components/CampaignSelector';
 import { MissionDebriefModal } from './components/MissionDebriefModal';
 import { ScientificResearchModal } from './components/ScientificResearchModal';
+import { CinematicIntro } from './components/CinematicIntro';
+import { BuildingInspectorModal, InspectableBuildingType } from './components/BuildingInspectorModal';
+import { AstronautInspectorModal } from './components/AstronautInspectorModal';
+import { audioSystem } from './utils/audioSystem';
 import { 
   Zap, 
   Wind, 
@@ -37,6 +41,12 @@ export const App: React.FC = () => {
     startNewMission,
   } = useSimulator();
 
+  const [showIntro, setShowIntro] = useState<boolean>(() => {
+    return sessionStorage.getItem('astra_intro_seen') !== 'true';
+  });
+  const [selectedBuilding, setSelectedBuilding] = useState<InspectableBuildingType | null>(null);
+  const [selectedAstronautId, setSelectedAstronautId] = useState<string | null>(null);
+
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
   const [isResearchModalOpen, setIsResearchModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
@@ -44,18 +54,52 @@ export const App: React.FC = () => {
   // Check current resource warnings
   const warnings = checkResourceWarnings(gameState);
 
+  // Sound effect triggers on mission events
+  useEffect(() => {
+    if (gameState.activeEvents.length > 0) {
+      audioSystem.playAlarm();
+    }
+  }, [gameState.activeEvents.length]);
+
+  const handleAdvanceDay = () => {
+    audioSystem.playTelemetryClick();
+    advanceDay();
+  };
+
+  const handlePurchaseUpgrade = (upgradeId: any) => {
+    purchaseUpgrade(upgradeId);
+    audioSystem.playObjectiveSuccess();
+    return true;
+  };
+
+  const handleToggleControl = (subsystemId: 'electrolysis' | 'greenhouses' | 'emergencyRationing') => {
+    audioSystem.playTelemetryClick();
+    toggleControl(subsystemId);
+  };
+
+  const handleIntroComplete = () => {
+    sessionStorage.setItem('astra_intro_seen', 'true');
+    setShowIntro(false);
+    audioSystem.initAudio();
+  };
+
   // Get latest daily balance metrics (if any)
   const latestDaily = gameState.dailyHistory[gameState.dailyHistory.length - 1];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
       
+      {/* Cinematic Opening Overlay */}
+      {showIntro && (
+        <CinematicIntro onComplete={handleIntroComplete} />
+      )}
+
       {/* 1. Top Mission Control Header */}
       <Header
         gameState={gameState}
         isPlaying={isPlaying}
         onTogglePlay={() => setIsPlaying(!isPlaying)}
-        onAdvanceDay={advanceDay}
+        onAdvanceDay={handleAdvanceDay}
         onReset={() => startNewMission(gameState.campaign, gameState.difficulty)}
         onOpenCampaignModal={() => setIsCampaignModalOpen(true)}
         onOpenResearchModal={() => setIsResearchModalOpen(true)}
@@ -161,7 +205,17 @@ export const App: React.FC = () => {
 
         {/* 3D Immersive Outpost Visualizer Layer */}
         <section className="relative">
-          <OutpostScene3D gameState={gameState} />
+          <OutpostScene3D 
+            gameState={gameState} 
+            onSelectBuilding={(type) => {
+              audioSystem.playTelemetryClick();
+              setSelectedBuilding(type);
+            }}
+            onSelectAstronaut={(id) => {
+              audioSystem.playTelemetryClick();
+              setSelectedAstronautId(id);
+            }}
+          />
         </section>
 
         {/* 3. Engineering Directives Progress Bar */}
@@ -203,12 +257,12 @@ export const App: React.FC = () => {
         <div className="space-y-4">
           <ConstructionPanel
             gameState={gameState}
-            onPurchaseUpgrade={purchaseUpgrade}
+            onPurchaseUpgrade={handlePurchaseUpgrade}
           />
 
           <LoadSheddingPanel
             gameState={gameState}
-            onToggleControl={toggleControl}
+            onToggleControl={handleToggleControl}
           />
         </div>
 
@@ -239,6 +293,22 @@ export const App: React.FC = () => {
       </footer>
 
       {/* Modals */}
+      {/* 3D Building Inspector Holographic Modal */}
+      <BuildingInspectorModal
+        buildingType={selectedBuilding}
+        gameState={gameState}
+        onClose={() => setSelectedBuilding(null)}
+        onPurchaseUpgrade={handlePurchaseUpgrade}
+        onToggleControl={handleToggleControl}
+      />
+
+      {/* 3D Astronaut Inspector Holographic Modal */}
+      <AstronautInspectorModal
+        astronautId={selectedAstronautId}
+        gameState={gameState}
+        onClose={() => setSelectedAstronautId(null)}
+      />
+
       {/* Emergent Event Modal */}
       <EventModal
         events={gameState.activeEvents}

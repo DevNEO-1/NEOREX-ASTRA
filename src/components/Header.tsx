@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameState } from '../simulator/types';
+import { audioSystem } from '../utils/audioSystem';
 import { 
   Play, 
   Pause, 
@@ -9,7 +10,9 @@ import {
   Moon, 
   BookOpen, 
   Compass, 
-  Award
+  Award,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -34,6 +37,19 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDebriefModal,
 }) => {
   const { day, totalDays, isDaylight, campaign, isMissionOver } = gameState;
+  const [isMuted, setIsMuted] = useState<boolean>(audioSystem.getMuted());
+
+  useEffect(() => {
+    setIsMuted(audioSystem.getMuted());
+  }, []);
+
+  const handleToggleMute = () => {
+    const nextMuted = audioSystem.toggleMute();
+    setIsMuted(nextMuted);
+    if (!nextMuted) {
+      audioSystem.playTelemetryClick();
+    }
+  };
 
   // Calculate daylight countdown
   let daylightStatusText = '';
@@ -150,6 +166,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
             <span className="hidden sm:inline">Science Citations</span>
+          </button>
+
+          {/* Audio Synthesizer Control */}
+          <button
+            onClick={handleToggleMute}
+            title={isMuted ? 'Unmute Web Audio Ambience & Telemetry' : 'Mute Web Audio'}
+            className={`p-1.5 rounded-lg border text-xs font-medium transition ${
+              isMuted
+                ? 'bg-slate-800 text-slate-500 border-slate-700 hover:text-slate-300'
+                : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/40 hover:bg-cyan-500/20'
+            }`}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
 
           {/* Reset Mission */}
