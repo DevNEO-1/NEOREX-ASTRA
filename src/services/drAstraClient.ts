@@ -71,13 +71,14 @@ export function buildReadOnlySimulationContext(gameState: GameState): DrAstraCha
 
 /**
  * Client service that sends queries to the secure Dr. Astra Gemini backend endpoint.
+ * Supports configurable public backend URL via VITE_DR_ASTRA_BACKEND_URL or same-origin /api proxy.
  * If backend is offline or network fails, gracefully falls back to deterministic guidance.
  */
 export async function sendDrAstraMessage(
   message: string,
   gameState: GameState,
   learningProfile: LearningProfileTier,
-  backendUrl: string = 'http://localhost:3001'
+  backendUrl?: string
 ): Promise<DrAstraChatResponse> {
   const simulationContext = buildReadOnlySimulationContext(gameState);
   const activeObj = gameState.objectives.find(o => !o.achieved);
@@ -90,11 +91,18 @@ export async function sendDrAstraMessage(
     simulationContext,
   };
 
+  // Resolve target endpoint: explicit parameter > VITE_DR_ASTRA_BACKEND_URL > same-origin relative proxy
+  const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DR_ASTRA_BACKEND_URL
+    ? String(import.meta.env.VITE_DR_ASTRA_BACKEND_URL)
+    : '';
+  const resolvedBase = (backendUrl !== undefined ? backendUrl : envUrl).trim().replace(/\/+$/, '');
+  const endpoint = resolvedBase ? `${resolvedBase}/api/dr-astra/chat` : '/api/dr-astra/chat';
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch(`${backendUrl}/api/dr-astra/chat`, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

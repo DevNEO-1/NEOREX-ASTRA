@@ -110,7 +110,7 @@ export const JUNIOR_ADVENTURE_STEPS: JuniorStep[] = [
     explanation: 'During the 14-day lunar day, giant blue solar wings face the sun. They power our lights, heaters, and oxygen machines while charging batteries.',
     kidTakeaway: 'Before the long two-week lunar night arrives, we must store extra power in our batteries so we don\'t get cold in the dark!',
     actionText: 'Protect Your Astronauts',
-    funFact: 'The Sun shines super bright on the Moon because there are no clouds or rain in space to block the sunlight!',
+    funFact: 'Real Science Note: In our simulator, day and night are rounded to 14 Earth days each for gameplay simplicity. In real astronomy, a lunar day-night cycle lasts 29.5 Earth days (about 14.75 days of sunlight and 14.75 days of dark)!',
   },
   {
     id: 7,
@@ -123,7 +123,7 @@ export const JUNIOR_ADVENTURE_STEPS: JuniorStep[] = [
     explanation: 'The Earth has an atmosphere and magnetic field that protects us. On the Moon, we use thick sintered lunar dirt (regolith) on our vault roof to block cosmic storms!',
     kidTakeaway: 'When a Solar Particle Storm strikes, astronauts take cover inside the reinforced shelter vault until the storm passes.',
     actionText: 'Complete Your First Mission',
-    funFact: 'Moon dirt is called "regolith". When heated with microwaves, it bakes into rock-solid space bricks that are stronger than concrete!',
+    funFact: 'Real Science Note: Moon dirt is called "regolith". When heated with microwaves or solar concentrators, it bakes into solid bricks that provide passive mass shielding against solar particle storms!',
   },
   {
     id: 8,

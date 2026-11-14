@@ -243,7 +243,7 @@ export const BuildingInspectorModal: React.FC<BuildingInspectorModalProps> = ({
           metrics: [
             { label: 'Mobility Suspension', value: '6-Wheel Rocker-Bogie', status: 'Operational' },
             { label: 'Power Source', value: isMoonRover ? 'High-Density Li-Ion & Solar Deck' : 'MMRTG Nuclear Thermoelectric', status: 'Optimal' },
-            { label: 'Surface Distance Logged', value: `${(gameState.day * 2.4).toFixed(1)} km Reconnaissance`, status: 'Recorded' },
+            { label: 'Simulated Traverse Estimate', value: `~${(gameState.day * 2.4).toFixed(1)} km (Simulated Reconnaissance)`, status: 'Estimated' },
             { label: 'Avionics Link', value: 'Deep Space Network Ground Relay', status: 'Connected' },
           ],
         };

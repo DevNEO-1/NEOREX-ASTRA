@@ -11,12 +11,12 @@ export interface ServerConfig {
 }
 
 export function loadConfig(): ServerConfig {
-  const allowedOriginsStr = process.env.ALLOWED_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173';
+  const allowedOriginsStr = process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173';
   const allowedOrigins = allowedOriginsStr.split(',').map(s => s.trim()).filter(Boolean);
 
   return {
     port: parseInt(process.env.PORT || '3001', 10),
-    host: process.env.HOST || '127.0.0.1',
+    host: process.env.HOST || '0.0.0.0',
     geminiApiKey: process.env.GEMINI_API_KEY,
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     nodeEnv: process.env.NODE_ENV || 'development',

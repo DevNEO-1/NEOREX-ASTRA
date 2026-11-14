@@ -146,14 +146,17 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
    ```bash
    cp .env.example .env
    ```
-2. Insert your Google Gemini API key:
+2. Insert your Google Gemini API key and configure runtime hosts:
    ```env
    PORT=3001
-   HOST=127.0.0.1
+   HOST=0.0.0.0
    GEMINI_API_KEY=AIzaSy...
    GEMINI_MODEL=gemini-2.5-flash
    NODE_ENV=development
-   ALLOWED_ORIGIN=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
+   ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
+   
+   # Frontend Client (Optional - leave blank for same-origin relative proxy /api/dr-astra/chat)
+   VITE_DR_ASTRA_BACKEND_URL=
    ```
 
 ### Execution & Verification Scripts
@@ -173,8 +176,10 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
 ---
 
 ## 4. Production Deployment & Security Requirements
-- Deploy as a stateless Node.js container (Docker / Cloud Run / AWS ECS / Render).
+- Deploy as a stateless Node.js container (Docker / Cloud Run / AWS ECS / Render / Fly.io).
+- Default `HOST=0.0.0.0` ensures the container listens on external network interfaces across cloud PaaS providers.
 - Build the backend before container execution via `npm run build:server`.
 - Inject `GEMINI_API_KEY` through your host's secret management service. Never expose it in client builds.
-- Configure `ALLOWED_ORIGIN` to match your production frontend host.
+- Configure `ALLOWED_ORIGIN` or `ALLOWED_ORIGINS` to match your deployed frontend origin(s) (e.g. `https://neorex-astra.web.app`). In production, unauthorized or missing origins are strictly rejected with HTTP 403.
+- In split deployments (e.g. Vercel/Firebase Hosting for frontend and Cloud Run/Render for backend), set `VITE_DR_ASTRA_BACKEND_URL` on the frontend build environment to point to the backend domain. In unified/containerized deployments, leave it empty to use same-origin `/api/dr-astra/chat`.
 - Node.js version constraint: Node.js >= 22.0.0 is strictly required by `@google/genai` package metadata engine specification.
