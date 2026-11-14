@@ -2,7 +2,8 @@
 ## Junior Astronaut Mission Trainer | NASA Space Apps Challenge 2026
 
 ![NEOREX ASTRA Banner](https://img.shields.io/badge/NASA%20Space%20Apps-2026-06b6d4?style=for-the-badge&logo=nasa)
-![Vitest Tests](https://img.shields.io/badge/Tests-19%20Passed-10b981?style=for-the-badge)
+![Vitest Tests](https://img.shields.io/badge/Tests-29%20Passed-10b981?style=for-the-badge)
+![NASA Validated](https://img.shields.io/badge/Scientific%20Validation-Pass%20V1.1-10b981?style=for-the-badge)
 ![Three.js 3D](https://img.shields.io/badge/Visuals-Three.js%203D%20Viewport-f59e0b?style=for-the-badge)
 ![React 18](https://img.shields.io/badge/Frontend-React%20%2B%20Vite%20%2B%20TS-61dafb?style=for-the-badge)
 ![TailwindCSS](https://img.shields.io/badge/Styling-Tailwind%20CSS-38bdf8?style=for-the-badge)

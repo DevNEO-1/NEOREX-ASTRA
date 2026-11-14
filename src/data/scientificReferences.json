@@ -1,53 +1,73 @@
 [
   {
-    "id": "nasa-bvad-eclss",
+    "id": "nasa-bvad-metabolic",
     "title": "Baseline Values and Assumptions Document (BVAD) for Spaceflight Life Support",
     "authorOrMission": "NASA Johnson Space Center (NASA/TP-2015-218570)",
     "sourceUrl": "https://ntrs.nasa.gov/citations/20150003058",
     "category": "Life Support",
-    "measuredFact": "A standard human astronaut consumes approximately 0.84 kg of O2 per day, produces 1.00 kg of CO2, requires 2.5–3.5 litres of hydration water, and consumes roughly 0.62–1.5 kg dry food biomass per day.",
-    "gameAssumption": "The 4-person outpost baseline is set to 3.2 kg O2/day (0.8 kg/person), 12 L water/day (3 L/person), and 6 kg food/day (1.5 kg/person).",
-    "simplificationRationale": "Rounds numbers to clean decimals for junior astronaut cognitive load while preserving exact closed-loop ratios."
+    "measuredFact": "Standard NASA planning reference rates: Oxygen consumption is 0.84 kg/person/day; nutritional dry food solids requirement is 0.62 kg/person/day; direct drinking water requirement is 1.62 kg/person/day (total hydration + food prep + hygiene is ~2.5–3.5 L/person/day).",
+    "gameAssumption": "Outpost baseline for 4 crew: 3.2 kg O₂/day (0.80 kg/person), 12 L total potable water/day (3.0 L/person), and 6 kg wet food rations/day (1.5 kg/person).",
+    "simplificationRationale": "Rounds numbers to clean decimals for junior astronaut cognitive accessibility while preserving exact physiological proportions and closed-loop demand ratios."
   },
   {
     "id": "iss-oxygen-generation",
-    "title": "Oxygen Generation System (OGS) on the International Space Station",
+    "title": "Oxygen Generation System (OGS) Flight Performance & Water Electrolysis Stoichiometry",
     "authorOrMission": "NASA Marshall Space Flight Center & ISS ECLSS Office",
     "sourceUrl": "https://www.nasa.gov/international-space-station/space-station-research-and-technology/life-support-systems/",
     "category": "Life Support",
-    "measuredFact": "Water electrolysis converts deionized water into oxygen and hydrogen via 2 H2O -> 2 H2 + O2. Generating 1 kg of O2 requires ~1.125 kg of water and approximately 4–6 kWh of electrical energy per kg O2.",
-    "gameAssumption": "Generating 3.2 kg of O2 requires 3.6 L of water and 19.2 kWh of electricity (6.0 kWh/kg).",
-    "simplificationRationale": "Faithfully captures the direct stoichiometric linkage: without water and electricity, oxygen generation is impossible."
+    "measuredFact": "Water electrolysis converts deionized water into oxygen and hydrogen via 2 H2O -> 2 H2 + O2. Mass stoichiometry requires 1.125 kg of water per 1.0 kg of O2 produced (36 g H2O / 32 g O2). Operating cell power demand is ~4.0–6.0 kWh per kg O2.",
+    "gameAssumption": "Generating 3.2 kg of O2 requires exactly 3.6 L of water and 19.2 kWh of electrical energy (6.0 kWh/kg).",
+    "simplificationRationale": "Preserves exact chemical mass conservation: without water and electricity, oxygen generation is chemically impossible."
   },
   {
     "id": "iss-water-recovery",
     "title": "Exploration Environmental Control and Life Support System (ECLSS) Water Recovery",
-    "authorOrMission": "NASA ISS Program (ECLSS Water Processing Assembly)",
+    "authorOrMission": "NASA ISS Program (Exploration ECLSS WPA & Brine Processor Assembly)",
     "sourceUrl": "https://www.nasa.gov/general/space-station-water-recycling-system-achieves-98-water-recovery/",
     "category": "Life Support",
-    "measuredFact": "Modern ISS distillation and reverse osmosis assemblies recover 93% to 98% of astronaut urine, perspiration, and cabin moisture.",
-    "gameAssumption": "Artemis Base Alpha starts with an 80% recovery rate, upgradeable through engineering modules to 90% and 99%.",
-    "simplificationRationale": "Allows students to experience the critical difference between low recovery (fast depletion) and closed-loop mastery."
+    "measuredFact": "NASA exploration ECLSS architecture establishes an initial baseline target of approximately 90% water recovery. In 2023, the ISS achieved a historic 98% water recovery milestone using the catalytic Water Processor Assembly combined with the Brine Processor Assembly (BPA).",
+    "gameAssumption": "Artemis Base Alpha begins with an 80% water recovery efficiency, upgradeable to 90% (Level 2) and up to 99% (Level 3).",
+    "simplificationRationale": "Allows commanders to experience the critical operational gap between low recycling (fast water depletion) and closed-loop mastery."
+  },
+  {
+    "id": "artemis-radiation-orion",
+    "title": "Orion Artemis I Cislunar Radiation Environment Flight Measurements",
+    "authorOrMission": "NASA Human Research Program / HERA & MARE Experiments",
+    "sourceUrl": "https://www.nasa.gov/directorates/esdmd/hhp/space-radiation/",
+    "category": "Radiation",
+    "measuredFact": "Active sensors inside the uncrewed Orion spacecraft during the Artemis I mission measured a Galactic Cosmic Ray (GCR) dose-equivalent rate of 0.96–1.24 mSv/day in cislunar and lunar orbit. Solar Particle Events (SPEs) produce sudden proton flux increases delivering 15 to >100 mSv.",
+    "gameAssumption": "Nominal background dose is set to 1.00 mSv/day (matching the Artemis I range). Solar storms add +15 to +35 mSv. Base aluminum hull offers 30% shielding, and sintered regolith shelters increase shielding to 50–90%.",
+    "simplificationRationale": "Directly integrates Artemis I empirical flight data while modeling regolith mass attenuation without complex particle transport Monte Carlo code."
   },
   {
     "id": "lunar-synodic-cycle",
-    "title": "Lunar Reconnaissance Orbiter (LRO) Diviner Lunar Radiometer Experiment",
+    "title": "Lunar Reconnaissance Orbiter (LRO) Diviner Radiometer Surface Illumination Data",
     "authorOrMission": "NASA Goddard Space Flight Center / UCLA",
     "sourceUrl": "https://www.lpi.usra.edu/lunar/missions/lro/",
     "category": "Lunar Environment",
-    "measuredFact": "The Moon has a synodic day of ~29.5 Earth days. Except for specific peaks of eternal light at lunar poles, a typical surface site experiences ~14 Earth days of continuous sunlight followed by ~14 Earth days of continuous darkness, with temperatures plunging below -130°C.",
-    "gameAssumption": "A 30-day lunar expedition is structured with daylight on Days 1–14, lunar night on Days 15–28, and dawn returning on Days 29–30.",
-    "simplificationRationale": "Directly confronts students with the profound energy storage challenge of surviving the lunar night using batteries."
+    "measuredFact": "The Moon has a synodic day of ~29.53 Earth days. In non-polar terrain, a surface outpost experiences approximately 14 continuous Earth days (354 hours) of solar daylight followed by 14 continuous Earth days of total darkness, with surface temperatures dropping below -130°C.",
+    "gameAssumption": "A 30-day lunar mission features Daylight on Days 1–14, Lunar Night on Days 15–28, and Dawn on Days 29–30.",
+    "simplificationRationale": "Forces commanders to solve the premier lunar surface engineering challenge: storing enough battery reserve and managing power loads to survive two weeks of darkness."
   },
   {
-    "id": "nasa-artemis-radiation-safety",
-    "title": "Space Radiation Cancer Risk Projections and Permissible Exposure Limits",
-    "authorOrMission": "NASA Human Research Program (NASA SP-2016-3705)",
-    "sourceUrl": "https://www.nasa.gov/directorates/esdmd/hhp/space-radiation/",
-    "category": "Radiation",
-    "measuredFact": "Lunar surface Galactic Cosmic Ray (GCR) background is approximately 0.5–1.2 mSv/day. A severe Solar Particle Event (SPE) can deliver over 200–500 mSv within hours if unshielded. Regolith regolith overburden of 1–2 meters provides substantial attenuation.",
-    "gameAssumption": "Nominal background dose is 1.0 mSv/day. Solar storms spike to +15 to +35 mSv. Base hull gives 30% shielding, and sintered regolith shelters boost shielding to 50–90%.",
-    "simplificationRationale": "Accurately conveys biological vulnerability to radiation without bogging students down in heavy particle transport physics."
+    "id": "lunar-ice-lcross",
+    "title": "LCROSS Impact Confirmation of Lunar South Pole Volatiles and Water Ice",
+    "authorOrMission": "NASA Ames Research Center / Science Magazine (Colaprete et al., 2010)",
+    "sourceUrl": "https://www.nasa.gov/mission_pages/LCROSS/main/index.html",
+    "category": "Lunar Environment",
+    "measuredFact": "The Lunar Crater Observation and Sensing Satellite (LCROSS) impacted the permanently shadowed region (PSR) of Cabeus crater, detecting water vapor and ice crystals estimating approximately 5.5% ± 1.5% (approx. 6%) water ice by mass in the ejecta plume.",
+    "gameAssumption": "Artemis Base Alpha is sited at the South Pole rim (Shackleton/Cabeus region), establishing the scientific premise for long-term water extraction and closed-loop hydrology.",
+    "simplificationRationale": "Grounds the outpost's location and life support dependencies in confirmed lunar volatile discoveries."
+  },
+  {
+    "id": "nasa-space-agriculture",
+    "title": "NASA Veggie and Advanced Plant Habitat (APH) Space Crop Production Investigations",
+    "authorOrMission": "NASA Kennedy Space Center / ISS Space Biology",
+    "sourceUrl": "https://www.nasa.gov/missions/station/iss-research/growing-plants-in-space/",
+    "category": "Life Support",
+    "measuredFact": "The ISS Veggie production system accommodates approximately 6 plant pillows for fresh dietary supplements. The Advanced Plant Habitat (APH) is an automated, enclosed growth chamber supporting long-duration experiments lasting up to 135 days (e.g., dwarf wheat, chile peppers).",
+    "gameAssumption": "Hydroponic greenhouse modules produce +4.0 kg fresh biomass food/day, consuming 6 kWh electrical lighting power and 16 L water/day.",
+    "simplificationRationale": "Simulates agricultural balance where crops provide ongoing caloric production but introduce non-trivial water and electrical loads."
   },
   {
     "id": "nasa-mars-dra5",
@@ -55,8 +75,8 @@
     "authorOrMission": "NASA Mars Exploration Program (NASA/SP-2009-566)",
     "sourceUrl": "https://ntrs.nasa.gov/citations/20090012109",
     "category": "Mars ECLSS",
-    "measuredFact": "Mars is situated at ~1.52 AU from the Sun, resulting in solar irradiance of ~590 W/m2 compared to Earth/Moon's ~1361 W/m2 (approximately 43%). Atmospheric dust storms further attenuate solar energy by up to 80%.",
-    "gameAssumption": "Mars campaign solar generation yields 32 kWh/sol (compared to 45 kWh/day on the Moon), with higher baseline heating demand.",
-    "simplificationRationale": "Teaches students how planetary distance and atmospheric dust alter space engineering trade-offs."
+    "measuredFact": "Mars orbits at ~1.52 AU from the Sun, reducing solar irradiance to ~590 W/m² (approximately 43% of Earth/Moon's 1361 W/m²). Atmospheric dust storms significantly increase optical depth (tau), reducing surface solar power by up to 80%.",
+    "gameAssumption": "Mars campaign solar generation yields 32 kWh/sol (compared to 45 kWh/day on the Moon), with higher baseline heating demand and dust storm mitigation requirements.",
+    "simplificationRationale": "Highlights the distinct planetary physics and engineering trade-offs when transitioning from lunar to Martian surface operations."
   }
 ]
