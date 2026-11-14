@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { ChatRequestPayload, ChatSuccessResponse, LearningProfileTier } from './types.js';
 import { ServerConfig } from './config.js';
 import { reviewAiResponseSafety } from './safetyReviewer.js';
+import { generateDeterministicFallback } from './fallbackGenerator.js';
 
 export class DrAstraService {
   private aiClient: GoogleGenAI | null = null;
@@ -223,51 +224,6 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
    * Guarantees 100% uptime for students without crashing.
    */
   public generateDeterministicFallback(payload: ChatRequestPayload): ChatSuccessResponse {
-    const { learningProfile, simulationContext, message } = payload;
-    const lower = message.toLowerCase();
-
-    let advice = '';
-
-    if (lower.includes('water')) {
-      if (learningProfile === 'junior') {
-        advice = `Water is super precious! Our recycler cleans water from astronaut breath and sweat so we can drink it again. Make sure our water tanks don't run empty! 💧`;
-      } else if (learningProfile === 'cadet') {
-        advice = `On the Moon, water cannot be replenished easily from Earth. In our simulation, baseline recycling starts at 80%, but NASA's real ISS system recovers 98% of wastewater. Upgrading our recycler above 85% prevents rapid depletion.`;
-      } else {
-        advice = `Closed-loop hydrology reference: NASA ISS Water Processor Assembly achieves ~98% recovery. In this simulation, recycling starts at 80% with upgrade paths up to 95%. Balance the 3.6 L/day electrolysis demand with your current recovery capacity.`;
-      }
-    } else if (lower.includes('power') || lower.includes('battery') || lower.includes('solar') || lower.includes('night')) {
-      if (learningProfile === 'junior') {
-        advice = `Our big solar panels catch sunlight! When it's dark night on the Moon, we rely on batteries. Turn off extra machines to save power! ⚡`;
-      } else if (learningProfile === 'cadet') {
-        advice = `A lunar night lasts 14 Earth days (336 hours in non-polar zones, compared to the ~14.75 day / 354 hr astronomical synodic half-period). Ensure battery reserves exceed 500 kWh before sunset and toggle non-critical systems to power-rationing mode.`;
-      } else {
-        advice = `In this simulation, lunar night is simplified to 14 Earth days (336 hours, vs ~14.75-day / 354-hour astronomical synodic non-polar darkness). Cryogenic night insolation is 0 W/m². Base life support requires 35.2 kWh/day minimum. Shed the 6.0 kWh/day greenhouse auxiliary load to prevent deep-cycle battery depletion.`;
-      }
-    } else if (lower.includes('radiation') || lower.includes('storm') || lower.includes('shield')) {
-      if (learningProfile === 'junior') {
-        advice = `Cosmic rays are invisible space particles! We pile thick moon dirt on top of our habitat to keep our astronaut crew safe inside! 🛡️`;
-      } else if (learningProfile === 'cadet') {
-        advice = `Galactic cosmic rays and solar flares deliver ionizing radiation. Artemis I measured deep-space GCR doses of 0.96-1.24 mSv/day inside Orion during cis-lunar transit; our lunar outpost simulation uses 1.00 mSv/day unshielded as an educational game assumption. Regolith shielding safely blocks high-energy ions!`;
-      } else {
-        advice = `Radiation reference: NASA Artemis I Orion measured 0.96-1.24 mSv/day inside the capsule during cis-lunar transit; our lunar surface outpost models unshielded radiation as an assumed 1.00 mSv/day scenario (with the lunar body providing a 2-pi planetary shadow). Passive regolith mass attenuation reduces dose equivalent towards terrestrial occupational limits.`;
-      }
-    } else {
-      if (learningProfile === 'junior') {
-        advice = `Hello Explorer! I'm watching our telemetry on Day ${simulationContext.day}. Look at our batteries and water tanks—let's keep our astronauts healthy! What would you like to build next? 🚀`;
-      } else if (learningProfile === 'cadet') {
-        advice = `Welcome Cadet! Outpost status on Day ${simulationContext.day} is stable. Keep an eye on the 14-day night cycle and balance oxygen generation against water reserves.`;
-      } else {
-        advice = `Commander, telemetry is nominal for Day ${simulationContext.day}. Verify ECLSS mass balances and maintain shielding integrity across all primary operational modules.`;
-      }
-    }
-
-    return {
-      success: true,
-      response: advice,
-      ageTier: learningProfile,
-      timestamp: new Date().toISOString(),
-      isFallback: true,
-    };
+    return generateDeterministicFallback(payload);
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { GameState } from '../simulator/types';
 import { LearningProfileTier, LEARNING_PROFILES } from '../simulator/learningProfiles';
 import { audioSystem } from '../utils/audioSystem';
@@ -12,8 +12,19 @@ import {
   Lightbulb,
   Send,
   Loader2,
-  Bot
+  Bot,
+  User,
+  WifiOff,
+  RotateCcw
 } from 'lucide-react';
+
+export interface ChatMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+  isFallback?: boolean;
+}
 
 interface AstronautCompanionProps {
   gameState: GameState;
@@ -33,23 +44,60 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
   const [isOpen, setIsOpen] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [customReply, setCustomReply] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const profile = LEARNING_PROFILES[learningProfile];
+
+  // Auto-scroll chat transcript to latest message
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [conversation, isLoadingAi]);
 
   const handleAskDrAstra = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || isLoadingAi) return;
 
-    const question = chatInput.trim();
+    const questionText = chatInput.trim();
+    // Rule 8: Do not clear user input until it has been safely added to transcript
+    const userMsg: ChatMessage = {
+      id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      sender: 'user',
+      text: questionText,
+      timestamp: new Date().toISOString(),
+    };
+
+    setConversation(prev => [...prev, userMsg]);
+    setChatInput('');
     setIsLoadingAi(true);
     audioSystem.playTelemetryClick();
 
-    const result = await sendDrAstraMessage(question, gameState, learningProfile);
-    setIsLoadingAi(false);
-    setChatInput('');
-    setCustomReply(result.response);
-    audioSystem.playUpgradeChime();
+    try {
+      const result = await sendDrAstraMessage(questionText, gameState, learningProfile);
+      const assistantMsg: ChatMessage = {
+        id: `ast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        sender: 'assistant',
+        text: result.response,
+        timestamp: result.timestamp || new Date().toISOString(),
+        isFallback: result.isFallback,
+      };
+      setConversation(prev => [...prev, assistantMsg]);
+      audioSystem.playUpgradeChime();
+    } catch {
+      // In case of unexpected rejection, add a safe offline assistant message
+      const fallbackMsg: ChatMessage = {
+        id: `ast_err_${Date.now()}`,
+        sender: 'assistant',
+        text: `Dr. Astra is operating in local safe mode on Day ${gameState.day}. Life support and solar power buffers remain stable. Ask about oxygen, water recycling, batteries, or space!`,
+        timestamp: new Date().toISOString(),
+        isFallback: true,
+      };
+      setConversation(prev => [...prev, fallbackMsg]);
+    } finally {
+      setIsLoadingAi(false);
+    }
   };
 
   // Dynamic context-sensitive message generation based on profile tier and live gameState
@@ -100,79 +148,72 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
         };
       } else {
         return {
-          title: '❄️ Cryogenic Diurnal Dark Period',
-          message: `Lunar surface insolation = 0 W/m². Battery reserves at ${(resources.batteryKwh / resources.batteryCapacityKwh * 100).toFixed(1)}% capacity. Monitor discharge rate closely.`,
-          hint: 'Thermal and life-support baselines require 35.2 kWh/day minimum.',
+          title: '🌙 Cryogenic Night Insolation Delta',
+          message: `Day ${day}: Solar input 0.0 W/m² (14-day synodic night model). Battery reserve: ${Math.round(resources.batteryKwh)} kWh. Primary ECLSS drain: 35.2 kWh/day.`,
+          hint: 'Shed non-critical sub-systems or purchase energy density battery upgrades.',
           mood: 'caution',
         };
       }
     }
 
-    // Low Resources
-    if (resources.waterLitres < 100) {
+    // Oxygen Running Low (< 40 kg)
+    if (resources.oxygenKg < 40) {
       if (learningProfile === 'junior') {
         return {
-          title: '💧 We Need Water!',
-          message: "Our water tank is getting low! Astronauts need water to drink and to make breathing air. Let's upgrade our water recycler!",
-          hint: 'Click on the Water Extractor or buy a water upgrade!',
-          mood: 'warning',
+          title: '🫧 Fresh Air Warning!',
+          message: "Our oxygen tanks are getting low! Astronauts need clean air to breathe. Make sure we have water to turn into fresh air!",
+          hint: 'Keep water above 100 liters so our air machine can run!',
+          mood: 'alarm',
         };
       } else {
         return {
-          title: '⚠️ Hydrology Warning',
-          message: `Water reserves at ${Math.round(resources.waterLitres)} L. Electrolysis and greenhouse irrigation will be throttled if reserves hit zero.`,
-          hint: 'Upgrade the water recycling processor or adjust greenhouse load.',
-          mood: 'warning',
+          title: '💨 Oxygen Buffer Depleting',
+          message: `Oxygen reserve has dropped to ${resources.oxygenKg.toFixed(1)} kg. 4 crew consume 3.2 kg/day. Ensure water electrolysis has sufficient power.`,
+          hint: 'Electrolysis uses 1.125 L water per kg of O2 generated.',
+          mood: 'alarm',
         };
       }
     }
 
-    // Nominal Day 1 Welcome
-    if (day === 1) {
+    // Water Depleting (< 80 L)
+    if (resources.waterLitres < 80) {
       if (learningProfile === 'junior') {
         return {
-          title: '👋 Welcome to the Moon, Explorer!',
-          message: "I'm Astra, your astronaut friend! We just landed. Look around our 3D moon base! Click on any building or astronaut to see how it works.",
-          hint: 'Press the bright blue "Next Day" button at the top to start mission time!',
-          mood: 'happy',
-        };
-      } else if (learningProfile === 'cadet') {
-        return {
-          title: '🚀 Artemis Base Alpha Operational',
-          message: "Welcome Cadet! You are in command of human survival on the Moon. Keep our 4 astronauts healthy and balance Power, Oxygen, Water, and Food.",
-          hint: 'Try clicking on the Solar Arrays or Greenhouse in 3D to inspect telemetry.',
-          mood: 'happy',
+          title: '💧 Save Every Drop!',
+          message: "Our water tank is running low! Don't let our astronauts get thirsty. Upgrading our recycler cleans more water!",
+          hint: 'Upgrade the water recycler so we waste less moisture!',
+          mood: 'caution',
         };
       } else {
         return {
-          title: '🎖️ Commander on Deck',
-          message: "All life-support telemetry initialized. ECLSS closed-loop targets active. Prepare for the 14-day lunar night and solar flare contingencies.",
-          hint: 'Review the Engineering Directives to unlock full Mars mission authorization.',
-          mood: 'happy',
+          title: '💧 Hydrology Deficit Warning',
+          message: `Water reserves at ${resources.waterLitres.toFixed(1)} L. Net daily drain is outpacing reclamation efficiency.`,
+          hint: 'Upgrade Water Processor to 90%+ recovery or shed greenhouse crops.',
+          mood: 'caution',
         };
       }
     }
 
-    // General Positive Progress
+    // Default Good Status
     if (learningProfile === 'junior') {
       return {
-        title: '⭐ Great Job, Commander!',
-        message: `Day ${day} is going well! Our astronauts are happy and healthy. Did you know the Moon has only 1/6th of Earth's gravity? You can jump super high!`,
-        hint: 'Click "Science Experiments" to play fun space games!',
+        title: '👋 Welcome to Space, Explorer!',
+        message: `I'm Dr. Astra! It is Day ${day} on our ${campaign === 'moon' ? 'Moon' : 'Mars'} adventure! Our astronauts are happy and healthy. Let's do some cool science experiments!`,
+        hint: 'Click the Science Lab button below to test how plants grow in space!',
         mood: 'happy',
       };
     } else if (learningProfile === 'cadet') {
       return {
-        title: '📊 Mission Status Nominal',
-        message: `Day ${day} progress: Crew vitals steady. Keep an eye on battery capacity and consider building a hydroponic greenhouse for fresh food.`,
-        hint: 'Greenhouses need water and electricity, but produce 4 kg of food daily!',
+        title: '🛰️ Mission Status Nominal',
+        message: `Day ${day} operational logs: Life support and electrical balances are stable. Maintain your daily logs and check telemetry charts regularly.`,
+        hint: 'Directives reward bonus Science Credits when completed!',
         mood: 'happy',
       };
     } else {
       return {
-        title: '📡 Outpost Telemetry Online',
-        message: `Day ${day}: Systems operating within standard nominal thresholds. ECLSS water recovery is ${(gameState.waterRecyclingEfficiency * 100).toFixed(0)}%.`,
-        hint: 'Inspect science citations in the header for exact NASA technical references.',
+        title: '📊 ECLSS Equilibrium Stable',
+        message: `Day ${day} engineering telemetry indicates nominal metabolic mass balances. Closed-loop recovery systems operating within NASA Artemis planning boundaries.`,
+        hint: 'Monitor long-term cumulative radiation exposure during solar quiet periods.',
         mood: 'happy',
       };
     }
@@ -180,24 +221,30 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
 
   const dialogue = getCompanionDialogue();
 
-  // Simple Speech synthesis simulation / accessibility reading
-  const handleSpeak = () => {
-    if ('speechSynthesis' in window) {
-      if (isSpeaking) {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-      } else {
-        const utterance = new SpeechSynthesisUtterance(`${dialogue.title}. ${dialogue.message} ${dialogue.hint}`);
-        utterance.rate = learningProfile === 'junior' ? 0.9 : 1.0;
-        utterance.pitch = learningProfile === 'junior' ? 1.2 : 1.0;
-        utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
-        setIsSpeaking(true);
-        window.speechSynthesis.speak(utterance);
-      }
-    } else {
-      audioSystem.playTelemetryClick();
+  // Voice guidance TTS using Web Speech API
+  const handleToggleVoice = () => {
+    if (!('speechSynthesis' in window)) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
     }
+
+    const latestText = conversation.length > 0
+      ? conversation[conversation.length - 1].text
+      : dialogue.message;
+
+    const utterance = new SpeechSynthesisUtterance(latestText);
+    utterance.rate = learningProfile === 'junior' ? 0.9 : 1.0;
+    utterance.pitch = 1.05;
+
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
   };
 
   if (!isOpen) {
@@ -207,49 +254,50 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
           audioSystem.playTelemetryClick();
           setIsOpen(true);
         }}
-        title="Open Astronaut Guide"
-        className="fixed bottom-4 right-4 z-40 p-3 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-glow-cyan hover:scale-105 transition flex items-center gap-2 font-bold text-xs"
+        title="Open Dr. Astra Assistant"
+        className="fixed bottom-4 right-4 z-40 p-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 border border-cyan-300/40"
       >
-        <span className="text-xl animate-bounce">👩‍🚀</span>
-        <span className="hidden sm:inline text-white font-mono">Astronaut Guide</span>
+        <span className="text-xl">👩‍🚀</span>
+        <span className="text-xs font-bold font-sans tracking-wide pr-1 hidden sm:inline">Dr. Astra</span>
       </button>
     );
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 max-w-sm sm:max-w-md w-full bg-slate-900/95 border border-cyan-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-md transition-all animate-fadeIn">
-      {/* Header bar */}
-      <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-500/50 flex items-center justify-center text-lg">
+    <div className="fixed bottom-4 right-4 z-40 w-96 max-w-[calc(100vw-2rem)] rounded-2xl bg-slate-900/95 border border-cyan-500/30 backdrop-blur-md shadow-2xl text-slate-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 font-sans">
+      
+      {/* Top Header Card */}
+      <div className="p-3 bg-gradient-to-r from-cyan-950/80 via-slate-900/90 to-blue-950/80 border-b border-cyan-500/20 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-lg shadow-inner">
             👩‍🚀
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-xs text-white">Astra — Mission Companion</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${profile.colorScheme.badgeBg}`}>
-                {profile.badge}
+              <h3 className="font-bold text-xs text-white">Dr. Astra</h3>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                {profile.label}
               </span>
             </div>
-            <span className="text-[10px] text-cyan-400 font-mono">{profile.ageRange}</span>
+            <p className="text-[10px] text-cyan-200/80">Astronaut Mentor & Science Teacher</p>
           </div>
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Text-to-speech button */}
-          <button
-            onClick={handleSpeak}
-            title={isSpeaking ? 'Stop Voice' : 'Read Out Loud (Voice Guide)'}
-            className={`p-1.5 rounded-lg border text-xs transition ${
-              isSpeaking
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-          >
-            {isSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-          </button>
+          {'speechSynthesis' in window && (
+            <button
+              onClick={handleToggleVoice}
+              title={isSpeaking ? "Mute Voice" : "Read Aloud"}
+              className={`p-1.5 rounded-lg border transition ${
+                isSpeaking 
+                  ? 'bg-cyan-500 text-slate-950 border-cyan-400' 
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+            >
+              {isSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            </button>
+          )}
 
-          {/* Dismiss button */}
           <button
             onClick={() => {
               audioSystem.playTelemetryClick();
@@ -267,37 +315,96 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
         </div>
       </div>
 
-      {/* Main Dialogue Content */}
-      <div className="space-y-2">
-        <h4 className="font-bold text-sm text-cyan-300 flex items-center gap-1.5">
-          <span>{dialogue.title}</span>
-        </h4>
+      {/* Main Dialogue & Conversation Transcript */}
+      <div className="p-3 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h4 className="font-bold text-xs text-cyan-300 flex items-center gap-1.5">
+            <span>{dialogue.title}</span>
+          </h4>
+          {conversation.length > 0 && (
+            <button
+              onClick={() => {
+                setConversation([]);
+                audioSystem.playTelemetryClick();
+              }}
+              className="text-[10px] text-slate-400 hover:text-cyan-300 flex items-center gap-1 transition"
+              title="Reset Chat Transcript"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Chat</span>
+            </button>
+          )}
+        </div>
 
-        {/* Custom AI Question & Answer Display */}
-        {customReply ? (
-          <div className="p-3 rounded-xl bg-slate-950/90 border border-cyan-500/40 text-xs text-slate-200 space-y-2 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-cyan-300 flex items-center gap-1.5">
-                <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Dr. Astra (Gemini AI Guidance)</span>
-              </span>
-              <button
-                onClick={() => setCustomReply(null)}
-                className="text-[10px] text-slate-400 hover:text-white"
-              >
-                Clear
-              </button>
+        {/* Conversation Transcript Window */}
+        <div 
+          ref={chatScrollRef}
+          className="max-h-56 min-h-[5.5rem] overflow-y-auto space-y-2 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs custom-scrollbar"
+        >
+          {/* Mission Guidance Starter */}
+          <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-800 text-slate-300 space-y-1">
+            <div className="flex items-center gap-1.5 text-[10px] text-cyan-400 font-bold uppercase tracking-wider">
+              <Bot className="w-3 h-3 text-cyan-400" />
+              <span>Dr. Astra Mission Telemetry</span>
             </div>
-            <p className="leading-relaxed font-sans">{customReply}</p>
+            <p className="text-[11.5px] leading-relaxed font-sans">{dialogue.message}</p>
           </div>
-        ) : (
-          <p className="text-xs text-slate-200 leading-relaxed font-sans">
-            {dialogue.message}
-          </p>
-        )}
+
+          {/* User & Assistant Conversation Messages */}
+          {conversation.map(msg => (
+            <div 
+              key={msg.id}
+              className={`p-2 rounded-lg animate-in fade-in space-y-1 ${
+                msg.sender === 'user'
+                  ? 'bg-cyan-950/50 border border-cyan-700/60 text-cyan-100 ml-4'
+                  : 'bg-slate-900/90 border border-slate-700/80 text-slate-200 mr-2 shadow-sm'
+              }`}
+            >
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="font-bold flex items-center gap-1">
+                  {msg.sender === 'user' ? (
+                    <>
+                      <User className="w-3 h-3 text-cyan-300" />
+                      <span className="text-cyan-300">You</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="w-3 h-3 text-cyan-400" />
+                      <span className="text-cyan-300">Dr. Astra</span>
+                      {msg.isFallback ? (
+                        <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-0.5" title="Local deterministic educational guidance engaged">
+                          <WifiOff className="w-2.5 h-2.5" />
+                          <span>Local Guidance</span>
+                        </span>
+                      ) : (
+                        <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          ● Live Gemini
+                        </span>
+                      )}
+                    </>
+                  )}
+                </span>
+                <span className="text-slate-500 text-[9px] font-mono">
+                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <p className="text-[11.5px] leading-relaxed font-sans select-text whitespace-pre-wrap">
+                {msg.text}
+              </p>
+            </div>
+          ))}
+
+          {/* Loading Indicator */}
+          {isLoadingAi && (
+            <div className="p-2 rounded-lg bg-slate-900/80 border border-cyan-500/30 text-cyan-300 flex items-center gap-2 animate-pulse text-xs">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+              <span>Dr. Astra is analyzing mission telemetry...</span>
+            </div>
+          )}
+        </div>
 
         {/* Ask Dr. Astra AI Input Bar */}
-        <form onSubmit={handleAskDrAstra} className="flex items-center gap-1.5 pt-1">
+        <form onSubmit={handleAskDrAstra} className="flex items-center gap-1.5 pt-0.5">
           <input
             type="text"
             value={chatInput}
@@ -311,28 +418,29 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
             }
             maxLength={300}
             disabled={isLoadingAi}
-            className="flex-1 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-700 focus:border-cyan-500 text-xs text-white placeholder-slate-500 outline-none transition"
+            className="flex-1 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-700 focus:border-cyan-500 text-xs text-white placeholder-slate-500 outline-none transition disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={isLoadingAi || !chatInput.trim()}
-            className="p-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-800 text-slate-950 disabled:text-slate-600 transition flex items-center justify-center shrink-0 shadow-sm"
+            className="p-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-800 text-slate-950 disabled:text-slate-600 transition flex items-center justify-center shrink-0 shadow-sm cursor-pointer disabled:cursor-not-allowed"
+            title="Send Question"
           >
             {isLoadingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
           </button>
         </form>
 
         {/* Helpful Hint box */}
-        <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-800/60 text-cyan-300 text-[11px] flex items-start gap-2">
+        <div className="p-2 rounded-xl bg-cyan-950/40 border border-cyan-800/60 text-cyan-300 text-[11px] flex items-start gap-2">
           <Lightbulb className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             <span className="font-bold text-amber-300 uppercase tracking-wider text-[10px]">Astronaut Tip:</span>
-            <p className="text-slate-300">{dialogue.hint}</p>
+            <p className="text-slate-300 text-[10.5px] leading-tight">{dialogue.hint}</p>
           </div>
         </div>
 
         {/* Action quick links */}
-        <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+        <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
           {onOpenJuniorAdventure && learningProfile === 'junior' && (
             <button
               onClick={() => {
