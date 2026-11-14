@@ -426,9 +426,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     }).then((loadedLander) => {
       if (!isSubscribed || !loadedLander) return;
 
-      // Remove procedural fallback
+      // Remove procedural fallback and unregister its raycast meshes
       const existingFallback = landerGroup.getObjectByName('landerProceduralFallback');
       if (existingFallback) {
+        existingFallback.traverse((child) => {
+          interactiveObjectsRef.current = interactiveObjectsRef.current.filter(obj => obj !== child);
+        });
         landerGroup.remove(existingFallback);
         modelLoader.disposeHierarchy(existingFallback);
       }
@@ -441,7 +444,9 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       loadedLander.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           child.userData = { ...landerGroup.userData };
-          interactiveObjectsRef.current.push(child);
+          if (!interactiveObjectsRef.current.includes(child)) {
+            interactiveObjectsRef.current.push(child);
+          }
         }
       });
     }).catch(() => {
@@ -648,6 +653,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       window.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('wheel', handleWheel);
       window.removeEventListener('resize', handleResize);
+
+      // Clean up lander model instance
+      if (landerGroupRef.current) {
+        modelLoader.disposeHierarchy(landerGroupRef.current);
+        landerGroupRef.current = null;
+      }
+
       renderer.dispose();
     };
   }, [gameState.campaign, onSelectBuilding, onSelectAstronaut]);
@@ -861,10 +873,15 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     }
 
     // G. Astronaut 3D Characters with Asynchronous Realistic Asset & Procedural Fallback
+    let isCrewMounted = true;
     if (astronautsGroupRef.current) {
       const aGroup = astronautsGroupRef.current;
       while (aGroup.children.length > 0) {
         const oldChild = aGroup.children[0];
+        // Unregister any interactive meshes on old child from raycaster
+        oldChild.traverse((child) => {
+          interactiveObjectsRef.current = interactiveObjectsRef.current.filter(obj => obj !== child);
+        });
         aGroup.remove(oldChild);
         modelLoader.disposeHierarchy(oldChild);
       }
@@ -957,13 +974,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
         const { group: procAstro, interactiveMesh } = createProceduralAstronaut(member, idx, targetPos);
         aGroup.add(procAstro);
-        interactiveObjectsRef.current.push(interactiveMesh);
+        if (!interactiveObjectsRef.current.includes(interactiveMesh)) {
+          interactiveObjectsRef.current.push(interactiveMesh);
+        }
       });
 
       // Asynchronously load NASA Astronaut GLB model and replace procedural meshes
-      let isCrewMounted = true;
       modelLoader.loadModel('/models/astronaut/astronaut.glb').then((cachedAstro) => {
-        if (!isCrewMounted || !aGroup) return;
+        if (!isCrewMounted || !astronautsGroupRef.current) return;
 
         crew.forEach((member, idx) => {
           if (member.health <= 0) return;
@@ -986,7 +1004,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
             castShadow: true,
             receiveShadow: true,
             userData: astronautUserData,
-          });
+          }, '/models/astronaut/astronaut.glb');
 
           // Outer container to preserve idle animation bounce
           const astroWrapper = new THREE.Group();
@@ -1003,11 +1021,24 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           ring.position.y = 0.05;
           astroWrapper.add(ring);
 
-          // Find and swap procedural fallback
+          // Find and swap procedural fallback, removing its old interactive meshes
           const existingProc = aGroup.getObjectByName(`astronaut_proc_${member.id}`);
           if (existingProc) {
+            existingProc.traverse((child) => {
+              interactiveObjectsRef.current = interactiveObjectsRef.current.filter(obj => obj !== child);
+            });
             aGroup.remove(existingProc);
             modelLoader.disposeHierarchy(existingProc);
+          }
+
+          // If a previous GLB instance for this astronaut exists in the group, remove it
+          const existingGlb = aGroup.getObjectByName(`astronaut_glb_${member.id}`);
+          if (existingGlb) {
+            existingGlb.traverse((child) => {
+              interactiveObjectsRef.current = interactiveObjectsRef.current.filter(obj => obj !== child);
+            });
+            aGroup.remove(existingGlb);
+            modelLoader.removeInstance(existingGlb);
           }
 
           aGroup.add(astroWrapper);
@@ -1016,7 +1047,9 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           astroInstance.traverse((child) => {
             if ((child as THREE.Mesh).isMesh) {
               child.userData = { ...astronautUserData };
-              interactiveObjectsRef.current.push(child);
+              if (!interactiveObjectsRef.current.includes(child)) {
+                interactiveObjectsRef.current.push(child);
+              }
             }
           });
         });
@@ -1025,6 +1058,9 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       });
     }
 
+    return () => {
+      isCrewMounted = false;
+    };
   }, [gameState]);
 
   // Camera preset transitions with smooth animated targets

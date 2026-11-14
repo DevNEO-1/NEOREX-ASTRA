@@ -16,13 +16,15 @@ export interface ModelTransformOptions {
 export interface CachedModelData {
   scene: THREE.Group;
   animations: THREE.AnimationClip[];
+  activeInstances: number;
 }
 
 /**
  * Singleton model loading & caching service.
  * Supports asynchronous GLB/GLTF loading with Draco mesh decompression,
  * deep cloning via SkeletonUtils, shadow/transform application,
- * safe fallback management, and explicit resource disposal.
+ * safe fallback management, reference-counted resource management,
+ * and isolated instance removal vs cache disposal.
  */
 class ModelLoaderService {
   private loader: GLTFLoader;
@@ -37,6 +39,7 @@ class ModelLoaderService {
     if (typeof window !== 'undefined') {
       try {
         this.dracoLoader = new DRACOLoader();
+        // Uses the standard DRACOLoader decoder path containing draco_wasm_wrapper.js & draco_decoder.wasm
         this.dracoLoader.setDecoderPath('/draco/');
         this.loader.setDRACOLoader(this.dracoLoader);
       } catch (err) {
@@ -65,6 +68,7 @@ class ModelLoaderService {
           const data: CachedModelData = {
             scene: gltf.scene,
             animations: gltf.animations || [],
+            activeInstances: 0,
           };
           this.cache.set(url, data);
           this.pendingPromises.delete(url);
@@ -85,13 +89,21 @@ class ModelLoaderService {
 
   /**
    * Safely clones a cached model for multi-instance rendering using SkeletonUtils.clone
-   * and applies shadow, transform, and userData configurations.
+   * and increments active instance tracking for reference-safe lifecycle management.
    */
   public instantiateModel(
     cached: CachedModelData,
-    options: ModelTransformOptions = {}
+    options: ModelTransformOptions = {},
+    sourceUrl?: string
   ): THREE.Group {
     const instance = cloneSkeleton(cached.scene) as THREE.Group;
+    cached.activeInstances++;
+
+    // Tag the instance with its source URL and cloned status for safe disposal identification
+    instance.userData.__isClonedInstance = true;
+    if (sourceUrl) {
+      instance.userData.__sourceUrl = sourceUrl;
+    }
 
     if (options.name) {
       instance.name = options.name;
@@ -155,17 +167,89 @@ class ModelLoaderService {
   ): Promise<THREE.Group | null> {
     try {
       const data = await this.loadModel(url);
-      return this.instantiateModel(data, options);
+      return this.instantiateModel(data, options, url);
     } catch {
       return null;
     }
   }
 
   /**
-   * Explicitly disposes of a 3D object hierarchy's geometries and material textures.
+   * Safe removal of a cloned instance from the scene graph.
+   * Does NOT destroy shared geometries or materials that are cached or shared with other active instances.
+   * Decrements the active reference counter on the cached model entry.
+   */
+  public removeInstance(instance: THREE.Object3D, parent?: THREE.Object3D): void {
+    if (parent) {
+      parent.remove(instance);
+    } else if (instance.parent) {
+      instance.parent.remove(instance);
+    }
+
+    const sourceUrl = instance.userData.__sourceUrl as string | undefined;
+    if (sourceUrl && this.cache.has(sourceUrl)) {
+      const cached = this.cache.get(sourceUrl)!;
+      cached.activeInstances = Math.max(0, cached.activeInstances - 1);
+    }
+  }
+
+  /**
+   * Explicitly disposes of uniquely owned 3D objects, geometries, and materials (e.g. procedural fallbacks).
+   * Guards against destroying shared cached resources if called on a cloned instance.
    */
   public disposeHierarchy(object: THREE.Object3D): void {
+    // If this is a cloned instance referencing cached shared buffers, use removeInstance to protect shared assets
+    if (object.userData && object.userData.__isClonedInstance) {
+      this.removeInstance(object);
+      return;
+    }
+
     object.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        if (mesh.geometry) {
+          mesh.geometry.dispose();
+        }
+        if (mesh.material) {
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((mat) => this.disposeMaterial(mat));
+          } else {
+            this.disposeMaterial(mesh.material);
+          }
+        }
+      }
+    });
+
+    if (object.parent) {
+      object.parent.remove(object);
+    }
+  }
+
+  private disposeMaterial(material: THREE.Material): void {
+    material.dispose();
+    for (const key of Object.keys(material)) {
+      const value = (material as unknown as Record<string, unknown>)[key];
+      if (value && typeof value === 'object' && 'isTexture' in value && Boolean((value as { isTexture: boolean }).isTexture)) {
+        (value as THREE.Texture).dispose();
+      }
+    }
+  }
+
+  /**
+   * Completely clears and disposes all cached geometries and materials after scenes unmount.
+   */
+  public clearCache(): void {
+    this.cache.forEach((data) => {
+      this.disposeSourceModel(data.scene);
+    });
+    this.cache.clear();
+    this.pendingPromises.clear();
+  }
+
+  /**
+   * Internal method to dispose the canonical cached master model.
+   */
+  private disposeSourceModel(scene: THREE.Group): void {
+    scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
         if (mesh.geometry) {
@@ -182,25 +266,11 @@ class ModelLoaderService {
     });
   }
 
-  private disposeMaterial(material: THREE.Material): void {
-    material.dispose();
-    for (const key of Object.keys(material)) {
-      const value = (material as unknown as Record<string, unknown>)[key];
-      if (value && typeof value === 'object' && 'isTexture' in value && Boolean((value as { isTexture: boolean }).isTexture)) {
-        (value as THREE.Texture).dispose();
-      }
-    }
-  }
-
   /**
-   * Clear cache for testing or memory reclamation.
+   * Get active instance count for a cached model (for testing and telemetry).
    */
-  public clearCache(): void {
-    this.cache.forEach((data) => {
-      this.disposeHierarchy(data.scene);
-    });
-    this.cache.clear();
-    this.pendingPromises.clear();
+  public getActiveInstances(url: string): number {
+    return this.cache.get(url)?.activeInstances ?? 0;
   }
 
   /**
