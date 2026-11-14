@@ -51,6 +51,18 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
     next();
   };
 
+  // 1. Health check endpoint (exempt from CORS and origin requirements for orchestrator/cloud probes)
+  app.get('/api/health', (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: 'healthy',
+      service: 'neorex-astra-backend',
+      geminiConfigured: Boolean(config.geminiApiKey),
+      model: config.geminiModel,
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // Strict Production CORS Configuration
   app.use(cors({
     origin: (origin, callback) => {
@@ -96,18 +108,6 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
       }
     });
     next();
-  });
-
-  // 1. Health check endpoint
-  app.get('/api/health', (_req: Request, res: Response) => {
-    res.status(200).json({
-      status: 'healthy',
-      service: 'neorex-astra-backend',
-      geminiConfigured: Boolean(config.geminiApiKey),
-      model: config.geminiModel,
-      nodeVersion: process.version,
-      timestamp: new Date().toISOString(),
-    });
   });
 
   // 2. Dr. Astra Interactive Chat Endpoint
