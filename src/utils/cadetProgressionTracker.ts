@@ -4,12 +4,18 @@
  * Anti-farming gamification engine for NEOREX ASTRA.
  * Enforces strict single-claim semantics for educational activities,
  * planet astrometry discoveries, trivia quizzes, engineering directives,
- * and deliberate turn advancement rewards.
+ * campaign-scoped facility actions, and deliberate turn advancement rewards.
+ *
+ * Automatically migrates legacy v1 keys ('astra_cadet_xp', 'astra_completed_directives')
+ * into secure v2 persistence without double-rewarding or data loss.
  */
 
-const XP_STORAGE_KEY = 'astra_cadet_xp_v2';
-const CLAIMED_ACTIVITIES_KEY = 'astra_claimed_activities_v2';
-const COMPLETED_DIRECTIVES_KEY = 'astra_completed_directives_v2';
+export const LEGACY_XP_STORAGE_KEY = 'astra_cadet_xp';
+export const LEGACY_DIRECTIVES_STORAGE_KEY = 'astra_completed_directives';
+
+export const XP_STORAGE_KEY = 'astra_cadet_xp_v2';
+export const CLAIMED_ACTIVITIES_KEY = 'astra_claimed_activities_v2';
+export const COMPLETED_DIRECTIVES_KEY = 'astra_completed_directives_v2';
 
 export interface XPAwardResult {
   awarded: boolean;
@@ -30,30 +36,92 @@ export class CadetProgressionTracker {
     this.load();
   }
 
+  /**
+   * Safely loads and parses progression data.
+   * Handles migration from legacy v1 keys and guards against corrupted JSON or malformed entries.
+   */
   public load(): void {
     if (typeof window === 'undefined' || !window.localStorage) return;
     try {
+      // 1. Check v2 state first
       const savedXp = localStorage.getItem(XP_STORAGE_KEY);
-      if (savedXp) {
+      let loadedXp: number | null = null;
+      if (savedXp !== null) {
         const parsed = parseInt(savedXp, 10);
-        if (!isNaN(parsed) && parsed >= 0) this.xp = parsed;
+        if (!isNaN(parsed) && parsed >= 0) {
+          loadedXp = parsed;
+        }
       }
 
+      // Check legacy v1 XP if v2 is not yet initialized
+      if (loadedXp === null) {
+        const legacyXp = localStorage.getItem(LEGACY_XP_STORAGE_KEY);
+        if (legacyXp !== null) {
+          const parsedLegacy = parseInt(legacyXp, 10);
+          if (!isNaN(parsedLegacy) && parsedLegacy >= 0) {
+            loadedXp = Math.max(120, parsedLegacy);
+          }
+        }
+      }
+      this.xp = loadedXp !== null ? loadedXp : 120;
+
+      // 2. Hydrate claimed activities
       const savedClaims = localStorage.getItem(CLAIMED_ACTIVITIES_KEY);
-      if (savedClaims) {
-        const arr = JSON.parse(savedClaims);
-        if (Array.isArray(arr)) {
-          this.claimedSet = new Set(arr);
+      if (savedClaims !== null) {
+        try {
+          const arr = JSON.parse(savedClaims);
+          if (Array.isArray(arr)) {
+            this.claimedSet = new Set(arr.filter((item): item is string => typeof item === 'string'));
+          }
+        } catch {
+          console.warn('[CadetTracker] Corrupted claimed activities JSON, resetting claims set.');
+          this.claimedSet = new Set<string>();
         }
       }
 
+      // 3. Hydrate directives (with legacy migration)
+      let directivesLoaded = false;
       const savedDirs = localStorage.getItem(COMPLETED_DIRECTIVES_KEY);
-      if (savedDirs) {
-        const arr = JSON.parse(savedDirs);
-        if (Array.isArray(arr)) {
-          this.directivesSet = new Set(arr);
+      if (savedDirs !== null) {
+        try {
+          const arr = JSON.parse(savedDirs);
+          if (Array.isArray(arr)) {
+            this.directivesSet = new Set(arr.filter((item): item is string => typeof item === 'string'));
+            directivesLoaded = true;
+          }
+        } catch {
+          console.warn('[CadetTracker] Corrupted completed directives JSON.');
         }
       }
+
+      // Migrate legacy directives if v2 directives key was empty or absent
+      if (!directivesLoaded) {
+        const legacyDirs = localStorage.getItem(LEGACY_DIRECTIVES_STORAGE_KEY);
+        if (legacyDirs !== null) {
+          try {
+            const arr = JSON.parse(legacyDirs);
+            if (Array.isArray(arr)) {
+              for (const d of arr) {
+                if (typeof d === 'string') {
+                  this.directivesSet.add(d);
+                  this.claimedSet.add(`directive_${d}`);
+                }
+              }
+            }
+          } catch {
+            console.warn('[CadetTracker] Corrupted legacy directives JSON.');
+          }
+        }
+      }
+
+      // Ensure baseline starting directive exists if empty
+      if (this.directivesSet.size === 0) {
+        this.directivesSet.add('step_sim');
+        this.claimedSet.add('directive_step_sim');
+      }
+
+      // Save migrated state to v2 format
+      this.save();
     } catch (err) {
       console.warn('[CadetTracker] Error hydrating progression from localStorage', err);
     }
@@ -135,7 +203,7 @@ export class CadetProgressionTracker {
    * Players receive +25 XP the first time each mission day is reached in a campaign.
    */
   public recordDayAdvancement(campaign: string, day: number): XPAwardResult {
-    const key = `day_adv_${campaign}_${day}`;
+    const key = `day_adv_${campaign.toLowerCase()}_${day}`;
     return this.claimReward(key, 25, `Day ${day} Mission Telemetry Logged`);
   }
 
@@ -151,6 +219,8 @@ export class CadetProgressionTracker {
         localStorage.removeItem(XP_STORAGE_KEY);
         localStorage.removeItem(CLAIMED_ACTIVITIES_KEY);
         localStorage.removeItem(COMPLETED_DIRECTIVES_KEY);
+        localStorage.removeItem(LEGACY_XP_STORAGE_KEY);
+        localStorage.removeItem(LEGACY_DIRECTIVES_STORAGE_KEY);
       } catch {}
     }
   }

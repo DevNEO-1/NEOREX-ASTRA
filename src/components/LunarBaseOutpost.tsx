@@ -72,7 +72,7 @@ interface LunarBaseOutpostProps {
   onRestCrew: (h: number) => void;
   onTreatCrew: (id: number) => void;
   onResupply: () => void;
-  onAddXP?: (amount: number, reason: string) => void;
+  onAddXP?: (amount: number, reason: string, customKey?: string) => void;
   onCompleteDirective?: (directiveId: string, xpReward: number) => void;
   playChime?: (type: "click" | "beep" | "success" | "warning") => void;
 }
@@ -115,8 +115,25 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
 
   // Educational Quizzes State
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
-  const [solvedQuizzes, setSolvedQuizzes] = useState<string[]>([]);
-  const [completedFacilityActions, setCompletedFacilityActions] = useState<string[]>([]);
+  const [solvedQuizzes, setSolvedQuizzes] = useState<string[]>(() => {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    try {
+      const saved = localStorage.getItem(`astra_solved_quizzes_${simState.campaign.toLowerCase()}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [completedFacilityActions, setCompletedFacilityActions] = useState<string[]>(() => {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    try {
+      const saved = localStorage.getItem(`astra_facility_actions_${simState.campaign.toLowerCase()}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Surface Canvas Ref
   const surfaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -412,35 +429,41 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
 
   const handleFacilityAction = (type: FacilityData["primaryActionType"]) => {
     if (playChime) playChime("beep");
-    const actionKey = `facility_action_${type}`;
+    const actionKey = `facility_action_${simState.campaign.toLowerCase()}_${type}`;
     const isFirstTime = !completedFacilityActions.includes(actionKey);
     if (isFirstTime) {
-      setCompletedFacilityActions((prev) => [...prev, actionKey]);
+      setCompletedFacilityActions((prev) => {
+        const next = [...prev, actionKey];
+        try {
+          localStorage.setItem(`astra_facility_actions_${simState.campaign.toLowerCase()}`, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
     }
 
     switch (type) {
       case "hab_diagnostics":
-        if (isFirstTime && onAddXP) onAddXP(20, "Life Support Equalization Diagnostic");
+        if (isFirstTime && onAddXP) onAddXP(20, `${simState.campaign} Life Support Equalization Diagnostic`, actionKey);
         break;
       case "solar_wipe":
-        if (isFirstTime && onAddXP) onAddXP(25, "Electrostatic Regolith Wave Fired");
+        if (isFirstTime && onAddXP) onAddXP(25, `${simState.campaign} Electrostatic Regolith Wave Fired`, actionKey);
         break;
       case "comm_align":
-        if (isFirstTime && onAddXP) onAddXP(20, "DSN Antenna Calibrated");
+        if (isFirstTime && onAddXP) onAddXP(20, `${simState.campaign} DSN Antenna Calibrated`, actionKey);
         break;
       case "o2_boost":
-        if (isFirstTime && onAddXP) onAddXP(30, "MOXIE Regolith Electrolysis Boosted");
+        if (isFirstTime && onAddXP) onAddXP(30, `${simState.campaign} MOXIE Regolith Electrolysis Boosted`, actionKey);
         break;
       case "water_drill":
-        if (isFirstTime && onAddXP) onAddXP(35, "Sub-Surface Core Ice Extracted");
+        if (isFirstTime && onAddXP) onAddXP(35, `${simState.campaign} Sub-Surface Core Ice Extracted`, actionKey);
         break;
       case "rover_deploy":
-        if (isFirstTime && onAddXP) onAddXP(40, "ASTRA Rover LTV-01 Sortie Deployed");
+        if (isFirstTime && onAddXP) onAddXP(40, `${simState.campaign} ASTRA Rover LTV-01 Sortie Deployed`, actionKey);
         break;
       case "resupply_dock":
         onResupply();
         if (playChime) playChime("success");
-        if (isFirstTime && onAddXP) onAddXP(50, "Logistics Resupply Pod Docked");
+        if (isFirstTime && onAddXP) onAddXP(50, `${simState.campaign} Logistics Resupply Pod Docked`, actionKey);
         if (onCompleteDirective) onCompleteDirective("dock_resupply", 40);
         break;
       case "eva_toggle":
@@ -578,7 +601,7 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
       if (!completedMissionIds.includes(curMission.id)) {
         setCompletedMissionIds((prev) => [...prev, curMission.id]);
         if (playChime) playChime("success");
-        if (onAddXP) onAddXP(curMission.xpReward, `Completed ${curMission.title}`);
+        if (onAddXP) onAddXP(curMission.xpReward, `Completed ${curMission.title}`, `mission_comp_${simState.campaign.toLowerCase()}_${curMission.id}`);
         if (curMission.id === "airlock_safety" && !simState.isEvaActive) {
           onToggleEva();
         }
@@ -596,9 +619,15 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
 
     if (optionIndex === fac.quiz.correctIndex) {
       if (!solvedQuizzes.includes(facilityId)) {
-        setSolvedQuizzes((prev) => [...prev, facilityId]);
+        setSolvedQuizzes((prev) => {
+          const next = [...prev, facilityId];
+          try {
+            localStorage.setItem(`astra_solved_quizzes_${simState.campaign.toLowerCase()}`, JSON.stringify(next));
+          } catch {}
+          return next;
+        });
         if (playChime) playChime("success");
-        if (onAddXP) onAddXP(25, `Lunar Science Discovery: ${fac.name}`);
+        if (onAddXP) onAddXP(25, `${simState.campaign} Science Challenge: ${fac.name}`, `quiz_facility_${simState.campaign.toLowerCase()}_${facilityId}`);
       } else {
         if (playChime) playChime("beep");
       }
@@ -1734,7 +1763,7 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
               <div className="telemetry-stat">
                 <span>CURRENT SORTIE STATUS</span>
                 <strong style={{ color: simState.isEvaActive ? "#FFB020" : "#29D9F2" }}>
-                  {simState.isEvaActive ? "EXTRAVEHICULAR ACTIVITY" : "HABITAT SHIELDED"}
+                  {simState.isEvaActive ? "SIMULATED EVA SORTIE DRILL ACTIVE" : "HABITAT SHIELDED"}
                 </strong>
               </div>
               <div className="telemetry-stat">
@@ -1743,7 +1772,7 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
               </div>
             </div>
             <p className="educational-crew-note">
-              NASA flight doctors monitor crew vitals in real time. In lunar low-gravity (0.166g), astronauts exercise 2 hours daily to prevent bone mineral loss and use shielded sleep quarters to stay rested.
+              NASA flight doctors monitor crew vitals in real time. Educational rest and first-aid drills represent procedural training exercises and do not alter actual deterministic simulator vitals. In lunar low-gravity (0.166g), astronauts exercise 2 hours daily to prevent bone mineral loss and use shielded sleep quarters to stay rested.
             </p>
           </div>
         </div>

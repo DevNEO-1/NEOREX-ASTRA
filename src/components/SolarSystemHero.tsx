@@ -487,7 +487,7 @@ interface SolarSystemHeroProps {
   marsUnlocked: boolean;
   onSelectCampaign: (campaign: "Moon" | "Mars") => void;
   onExploreBase: () => void;
-  onAddXP?: (amount: number, reason: string) => void;
+  onAddXP?: (amount: number, reason: string, customKey?: string) => void;
   playChime?: (type: "click" | "beep" | "success" | "warning") => void;
 }
 
@@ -563,7 +563,7 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
         return next;
       });
       if (onAddXP) {
-        onAddXP(25, `Explored ${CELESTIAL_BODIES.find((b) => b.id === id)?.name}`);
+        onAddXP(25, `Explored ${CELESTIAL_BODIES.find((b) => b.id === id)?.name}`, `planet_disc_${id}`);
       }
     }
   }, [discoveredBodies, onAddXP, playChime]);
@@ -574,7 +574,7 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
     if (!telemetrySpacecraftIds.includes(id)) {
       setTelemetrySpacecraftIds((prev) => [...prev, id]);
       if (onAddXP) {
-        onAddXP(20, `Acquired telemetry from ${SPACECRAFTS.find((s) => s.id === id)?.name}`);
+        onAddXP(20, `Acquired telemetry from ${SPACECRAFTS.find((s) => s.id === id)?.name}`, `sc_telemetry_${id}`);
       }
     }
   }, [onAddXP, playChime, telemetrySpacecraftIds]);
@@ -598,7 +598,7 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
       if (!completedQuizPlanetIds.includes(selectedPlanet.id)) {
         setCompletedQuizPlanetIds((prev) => [...prev, selectedPlanet.id]);
         if (onAddXP) {
-          onAddXP(25, `Solved ${selectedPlanet.name} Science Challenge!`);
+          onAddXP(25, `Solved ${selectedPlanet.name} Science Challenge!`, `quiz_planet_${selectedPlanet.id}`);
         }
       }
       setQuizFeedback({
@@ -1400,7 +1400,7 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
                     if (!scannedPlanetIds.includes(selectedPlanet.id)) {
                       setScannedPlanetIds((prev) => [...prev, selectedPlanet.id]);
                       if (onAddXP) {
-                        onAddXP(15, `Science sensor probe on ${selectedPlanet.name}`);
+                        onAddXP(15, `Science sensor probe on ${selectedPlanet.name}`, `planet_scan_${selectedPlanet.id}`);
                       }
                     }
                   }}
@@ -1484,7 +1484,7 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
                   if (!correctedSpacecraftIds.includes(selectedSpacecraft.id)) {
                     setCorrectedSpacecraftIds((prev) => [...prev, selectedSpacecraft.id]);
                     if (onAddXP) {
-                      onAddXP(20, `Trajectory burn correction on ${selectedSpacecraft.name}`);
+                      onAddXP(20, `Trajectory burn correction on ${selectedSpacecraft.name}`, `sc_burn_${selectedSpacecraft.id}`);
                     }
                   }
                 }}

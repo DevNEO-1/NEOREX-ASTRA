@@ -97,6 +97,7 @@ export const App: React.FC = () => {
 
   // Cadet XP & Directive Progression (Integrated from Evan's Gamification Model with anti-farming)
   const [cadetXp, setCadetXp] = useState<number>(() => cadetTracker.getXp());
+  const [isEvaDrillActive, setIsEvaDrillActive] = useState<boolean>(false);
 
   const [completedDirectives, setCompletedDirectives] = useState<string[]>(() => {
     const list = cadetTracker.getCompletedDirectives();
@@ -105,8 +106,9 @@ export const App: React.FC = () => {
 
   const [xpToast, setXpToast] = useState<{ message: string; amount: number } | null>(null);
 
-  const handleAddCadetXP = useCallback((amount: number, reason: string) => {
-    const result = cadetTracker.claimReward(reason, amount, reason);
+  const handleAddCadetXP = useCallback((amount: number, reason: string, customKey?: string) => {
+    const claimKey = customKey || reason;
+    const result = cadetTracker.claimReward(claimKey, amount, reason);
     if (result.awarded) {
       setCadetXp(result.newXp);
       setXpToast({ amount: result.amount, message: result.reason });
@@ -547,23 +549,29 @@ export const App: React.FC = () => {
         {activeTab === 'surface-ops' && (
           <div className="space-y-4 animate-in fade-in">
             <LunarBaseOutpost
-              simState={adaptGameStateToEvanView(gameState)}
+              simState={adaptGameStateToEvanView(gameState, isEvaDrillActive)}
               onAdvanceHours={handleAdvanceDay}
               onToggleEva={() => {
                 audioSystem.playTelemetryClick();
-                handleAddCadetXP(25, 'Surface EVA Sortie Protocol Inspected');
+                setIsEvaDrillActive((prev) => {
+                  const nextState = !prev;
+                  if (nextState) {
+                    handleAddCadetXP(25, 'Surface EVA Sortie Protocol Inspected', `eva_drill_inspection_${gameState.campaign.toLowerCase()}`);
+                  }
+                  return nextState;
+                });
               }}
               onRestCrew={(_h) => {
                 audioSystem.playTelemetryClick();
-                handleAddCadetXP(20, 'Crew Rest Circadian Drill Executed');
+                handleAddCadetXP(20, 'Crew Rest Circadian Drill Completed (Simulated training schedule; physical crew vitals unaffected)', `crew_rest_drill_${gameState.campaign.toLowerCase()}`);
               }}
-              onTreatCrew={(_id) => {
+              onTreatCrew={(id) => {
                 audioSystem.playTelemetryClick();
-                handleAddCadetXP(30, 'Crew First-Aid Protocol Serviced');
+                handleAddCadetXP(30, `Crew First-Aid Protocol Serviced on Crew Member #${id} (Simulated medical drill; actual physical health unchanged)`, `crew_med_drill_${gameState.campaign.toLowerCase()}_${id}`);
               }}
               onResupply={() => {
                 audioSystem.playUpgradeChime();
-                handleAddCadetXP(35, 'Consumables Resupply Module Docked');
+                handleAddCadetXP(35, 'Consumables Resupply Logistics Docked (Simulated supply drill; deterministic ECLSS balances maintained)', `resupply_drill_${gameState.campaign.toLowerCase()}`);
               }}
               onAddXP={handleAddCadetXP}
               onCompleteDirective={handleClaimDirective}

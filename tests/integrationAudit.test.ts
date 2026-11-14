@@ -1,12 +1,50 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createInitialGameState } from '../src/simulator/campaign';
 import { adaptGameStateToEvanView } from '../src/utils/evanSimulatorAdapter';
-import { cadetTracker, CadetProgressionTracker } from '../src/utils/cadetProgressionTracker';
+import { 
+  cadetTracker, 
+  CadetProgressionTracker, 
+  XP_STORAGE_KEY, 
+  CLAIMED_ACTIVITIES_KEY,
+  COMPLETED_DIRECTIVES_KEY,
+  LEGACY_XP_STORAGE_KEY,
+  LEGACY_DIRECTIVES_STORAGE_KEY
+} from '../src/utils/cadetProgressionTracker';
+
+// Mock in-memory localStorage for Node test environment
+class MockLocalStorage {
+  private store: Map<string, string> = new Map();
+
+  getItem(key: string): string | null {
+    return this.store.has(key) ? this.store.get(key)! : null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+const mockStorage = new MockLocalStorage();
 
 describe('NEOREX ASTRA — Post-Integration Audit & Hardening', () => {
 
   beforeEach(() => {
+    (globalThis as any).window = globalThis;
+    (globalThis as any).localStorage = mockStorage;
+    mockStorage.clear();
     cadetTracker.resetAll();
+  });
+
+  afterEach(() => {
+    mockStorage.clear();
   });
 
   describe('1. Telemetry Honesty & Unit Verification', () => {
@@ -162,11 +200,20 @@ describe('NEOREX ASTRA — Post-Integration Audit & Hardening', () => {
 
     it('marks evaDuration as 0 when EVA is inactive and annotates appropriately', () => {
       const state = createInitialGameState('moon');
-      const adapted = adaptGameStateToEvanView(state);
+      const adapted = adaptGameStateToEvanView(state, false);
 
       expect(adapted.isEvaActive).toBe(false);
       expect(adapted.physics.evaDuration).toBe(0);
       expect(adapted.physics.evaNote).toContain('No active extravehicular sortie; crew inside pressurized airlock habitat.');
+    });
+
+    it('toggles evaDuration and sortie status when simulated EVA drill is active', () => {
+      const state = createInitialGameState('moon');
+      const adapted = adaptGameStateToEvanView(state, true);
+
+      expect(adapted.isEvaActive).toBe(true);
+      expect(adapted.physics.evaDuration).toBe(2.5);
+      expect(adapted.physics.evaNote).toContain('Simulated sortie training session');
     });
   });
 
@@ -247,7 +294,89 @@ describe('NEOREX ASTRA — Post-Integration Audit & Hardening', () => {
     });
   });
 
-  describe('3. Mission Control Integrity & State Preservation', () => {
+  describe('3. XP Storage Migration & Resiliency', () => {
+    it('migrates legacy v1 keys (astra_cadet_xp, astra_completed_directives) into v2 keys without resetting or duplicating', () => {
+      localStorage.clear();
+      localStorage.setItem(LEGACY_XP_STORAGE_KEY, '280');
+      localStorage.setItem(LEGACY_DIRECTIVES_STORAGE_KEY, JSON.stringify(['step_sim', 'solar_drill']));
+
+      const tracker = new CadetProgressionTracker();
+      expect(tracker.getXp()).toBe(280);
+      expect(tracker.getCompletedDirectives()).toContain('solar_drill');
+      expect(tracker.getCompletedDirectives()).toContain('step_sim');
+      expect(tracker.isClaimed('directive_solar_drill')).toBe(true);
+
+      // Check v2 keys are populated
+      expect(localStorage.getItem(XP_STORAGE_KEY)).toBe('280');
+      expect(localStorage.getItem(COMPLETED_DIRECTIVES_KEY)).toContain('solar_drill');
+
+      // Subsequent reward increments properly without double-granting
+      const claim = tracker.claimDirective('solar_drill', 40);
+      expect(claim.awarded).toBe(false);
+      expect(tracker.getXp()).toBe(280);
+    });
+
+    it('handles corrupted localStorage JSON gracefully without throwing', () => {
+      localStorage.clear();
+      localStorage.setItem(XP_STORAGE_KEY, 'not-a-number');
+      localStorage.setItem(CLAIMED_ACTIVITIES_KEY, '{malformed json}');
+      localStorage.setItem(COMPLETED_DIRECTIVES_KEY, '[12, 34, null]');
+
+      const tracker = new CadetProgressionTracker();
+      expect(tracker.getXp()).toBe(120); // Fallback baseline
+      expect(tracker.getClaimedActivities()).toBeDefined();
+      expect(tracker.getCompletedDirectives()).toContain('step_sim');
+    });
+  });
+
+  describe('4. Campaign-Scoped Rewards & Facility Action Persistence', () => {
+    it('scopes facility action claims by campaign, allowing Moon and Mars actions independently', () => {
+      const tracker = new CadetProgressionTracker();
+      tracker.resetAll();
+      const initial = tracker.getXp();
+
+      // Moon action
+      const moonClaim = tracker.claimReward('facility_action_moon_water_drill', 35, 'Moon Sub-surface Core Drill');
+      expect(moonClaim.awarded).toBe(true);
+      expect(tracker.getXp()).toBe(initial + 35);
+
+      // Duplicate Moon action rejected
+      const moonRepeat = tracker.claimReward('facility_action_moon_water_drill', 35, 'Moon Sub-surface Core Drill');
+      expect(moonRepeat.awarded).toBe(false);
+
+      // Same action on Mars is distinct and awarded once
+      const marsClaim = tracker.claimReward('facility_action_mars_water_drill', 35, 'Mars Sub-surface Core Drill');
+      expect(marsClaim.awarded).toBe(true);
+      expect(tracker.getXp()).toBe(initial + 70);
+
+      // Duplicate Mars action rejected
+      const marsRepeat = tracker.claimReward('facility_action_mars_water_drill', 35, 'Mars Sub-surface Core Drill');
+      expect(marsRepeat.awarded).toBe(false);
+    });
+
+    it('scopes quiz rewards uniquely across planetary and facility challenges', () => {
+      const tracker = new CadetProgressionTracker();
+      tracker.resetAll();
+      const initial = tracker.getXp();
+
+      const q1 = tracker.claimReward('quiz_planet_europa', 25, 'Europa Quiz');
+      expect(q1.awarded).toBe(true);
+      expect(tracker.getXp()).toBe(initial + 25);
+
+      const q1Repeat = tracker.claimReward('quiz_planet_europa', 25, 'Europa Quiz');
+      expect(q1Repeat.awarded).toBe(false);
+
+      const qFacMoon = tracker.claimReward('quiz_facility_moon_o2_plant', 25, 'Moon O2 Plant Quiz');
+      expect(qFacMoon.awarded).toBe(true);
+      expect(tracker.getXp()).toBe(initial + 50);
+
+      const qFacMars = tracker.claimReward('quiz_facility_mars_o2_plant', 25, 'Mars O2 Plant Quiz');
+      expect(qFacMars.awarded).toBe(true);
+      expect(tracker.getXp()).toBe(initial + 75);
+    });
+  });
+
+  describe('5. Mission Control Integrity & State Preservation', () => {
     it('keeps Mars strictly locked on new game and prevents unlocking without qualifying score and survival', () => {
       const initialMoon = createInitialGameState('moon');
       expect(initialMoon.marsUnlocked).toBe(false);
