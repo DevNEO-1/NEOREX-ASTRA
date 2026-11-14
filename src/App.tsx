@@ -12,6 +12,7 @@ import { InstructorPanel } from './components/InstructorPanel';
 import { EventModal } from './components/EventModal';
 import { CampaignSelector } from './components/CampaignSelector';
 import { MissionDebriefModal } from './components/MissionDebriefModal';
+import { MissionReviewModal } from './components/MissionReviewModal';
 import { ScientificResearchModal } from './components/ScientificResearchModal';
 import { CinematicIntro } from './components/CinematicIntro';
 import { BuildingInspectorModal, InspectableBuildingType } from './components/BuildingInspectorModal';
@@ -55,6 +56,7 @@ export const App: React.FC = () => {
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
   const [isResearchModalOpen, setIsResearchModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isExperimentsModalOpen, setIsExperimentsModalOpen] = useState(false);
   const [isBadgesModalOpen, setIsBadgesModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -420,6 +422,30 @@ export const App: React.FC = () => {
         onClose={() => setIsDebriefModalOpen(false)}
         onRestart={() => startNewMission(gameState.campaign, gameState.difficulty)}
         onLaunchMars={() => startNewMission('mars', gameState.difficulty)}
+        onOpenReviewData={() => {
+          setIsDebriefModalOpen(false);
+          setIsReviewModalOpen(true);
+        }}
+      />
+
+      {/* Complete Mission Review & Analytics Modal */}
+      <MissionReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        onBackToDebrief={() => {
+          setIsReviewModalOpen(false);
+          setIsDebriefModalOpen(true);
+        }}
+        onRestart={() => {
+          setIsReviewModalOpen(false);
+          startNewMission(gameState.campaign, gameState.difficulty);
+        }}
+        onLaunchMars={() => {
+          setIsReviewModalOpen(false);
+          startNewMission('mars', gameState.difficulty);
+        }}
+        gameState={gameState}
+        learningProfile={learningProfile}
       />
 
       {/* NASA Scientific Research & Citations Modal */}

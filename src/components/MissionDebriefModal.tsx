@@ -9,6 +9,7 @@ interface MissionDebriefModalProps {
   onClose: () => void;
   onRestart: () => void;
   onLaunchMars: () => void;
+  onOpenReviewData?: () => void;
 }
 
 export const MissionDebriefModal: React.FC<MissionDebriefModalProps> = ({
@@ -17,6 +18,7 @@ export const MissionDebriefModal: React.FC<MissionDebriefModalProps> = ({
   onClose,
   onRestart,
   onLaunchMars,
+  onOpenReviewData,
 }) => {
   const { scoreBreakdown, isVictory, failureReason, campaign } = gameState;
 
@@ -138,14 +140,28 @@ export const MissionDebriefModal: React.FC<MissionDebriefModalProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons */}
+          {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-slate-800">
           <button
             onClick={onRestart}
-            className="w-full sm:w-1/2 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition border border-slate-700"
+            className="w-full sm:w-1/3 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition border border-slate-700"
           >
             <RotateCcw className="w-4 h-4" />
             <span>Replay Mission</span>
+          </button>
+
+          {/* Review Mission Data Button — triggers full analytics dashboard */}
+          <button
+            onClick={() => {
+              if (onOpenReviewData) {
+                onOpenReviewData();
+              } else {
+                onClose();
+              }
+            }}
+            className="w-full sm:w-1/3 py-2.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-glow-cyan"
+          >
+            <span>Review Mission Data</span>
           </button>
 
           {scoreBreakdown.isMarsEligible ? (
@@ -154,17 +170,17 @@ export const MissionDebriefModal: React.FC<MissionDebriefModalProps> = ({
                 onClose();
                 onLaunchMars();
               }}
-              className="w-full sm:w-1/2 py-2.5 px-4 rounded-xl bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-glow-amber"
+              className="w-full sm:w-1/3 py-2.5 px-4 rounded-xl bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-glow-amber"
             >
               <Rocket className="w-4 h-4" />
-              <span>Launch Mars Mission →</span>
+              <span>Launch Mars →</span>
             </button>
           ) : (
             <button
               onClick={onClose}
-              className="w-full sm:w-1/2 py-2.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition"
+              className="w-full sm:w-1/3 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition border border-slate-700"
             >
-              <span>Review Mission Data</span>
+              <span>Return to Outpost</span>
             </button>
           )}
         </div>
