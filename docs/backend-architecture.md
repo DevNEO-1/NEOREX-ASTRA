@@ -28,31 +28,32 @@ The **Dr. Astra Gemini Backend** provides a secure, reliable, child-friendly AI 
      - Structural bounds & size limits (non-empty string, $\le 1000$ characters).
      - Child safety & profanity safeguards (blocking adult content, vulgarity, and self-harm).
      - Physical & cyber safety checks (blocking explosive recipes, dangerous chemical mixtures, and cyber intrusion instructions).
-     - Privacy & PII protection (blocking telephone numbers, email addresses, and prompts soliciting personal data).
+     - Privacy & PII protection (contextual detection blocking actual telephone numbers, email addresses, and prompts soliciting personal data while permitting scientific measurements and numerical quantities).
      - System defense & prompt protection (blocking API keys, credential fragments, system prompts, and jailbreak persona reflection).
-   - **Deterministic Fallback Substitution:** If an AI response fails any safety condition, the raw output is discarded immediately, and a pre-screened, deterministic, age-adapted educational fallback is returned instead.
+   - **Deterministic Fallback Substitution & Metadata Precision:** If an AI response fails any safety condition, the raw output is discarded immediately, and a pre-screened, deterministic, age-adapted educational fallback is returned with `isFallback: true`. `isFallback: false` is preserved strictly and only when authentic model generation passes all safety reviews.
 
 5. **Upstream Request Timeout, Cancellation, and Safe Abandonment:**
-   - **Official SDK Client AbortSignal:** Leverages client-side `AbortController` passed to `aiClient.models.generateContent({ ..., config: { abortSignal } })` to abort underlying HTTP fetch operations when supported by the network transport.
-   - **Safe Abandonment Architecture:** Because network abort operations are client-only and do not guarantee server-side task cancellation on remote Google GenAI endpoints, the service enforces a strict abandonment lifecycle:
+   - **Official SDK Client AbortSignal Limitation:** Leverages client-side `AbortController` passed to `aiClient.models.generateContent({ ..., config: { abortSignal } })` to abort underlying HTTP fetch transport when supported by the network stack. *Limitation Note:* In `@google/genai`, `AbortSignal` is a client-only transport abort; it does not cancel in-flight remote server execution on Google Cloud backends.
+   - **Safe Abandonment Architecture:** Because network abort operations are client-only and cannot guarantee remote cancellation, the service enforces a strict abandonment lifecycle:
      - Active timeouts are race-managed with precise `clearTimeout` cleanup on all resolution and rejection branches.
      - An explicit `isAbandoned` state flag is set when a timeout occurs (7,000 ms upstream limit vs 10,000 ms route limit).
-     - If the upstream promise resolves after the timeout has fired, its result is strictly disregarded and discarded, preventing delayed responses from contaminating client sessions.
+     - If the upstream promise resolves after the timeout has fired (a "late result"), its result is strictly disregarded and discarded, preventing delayed responses from modifying or contaminating client sessions.
      - *Note: `Promise.race` is not cancellation*; it provides client timeout control while `AbortController` and `isAbandoned` ensure transport teardown and post-timeout result suppression.
 
-6. **NASA Scientific Integrity & Scientific Audit Distinctions:**
-   The backend prompt engineering and fallback engine maintain rigorous distinctions between real-world NASA engineering baselines and educational gameplay simplifications:
+6. **NASA Scientific Integrity & Scientific Evidence Audit:**
+   The backend prompt engineering, fallback engine, and documentation maintain rigorous distinctions between real-world NASA engineering baselines and educational gameplay simplifications:
    - **Lunar Daylight/Night Cycles:**
-     - *Astronomical Reality:* The synodic lunar day-night cycle (lunar month) lasts $\approx 29.53$ Earth days, producing $\approx 14.75$ Earth days (354 hours) of continuous daylight followed by $\approx 14.75$ Earth days of continuous non-polar darkness.
-     - *Game Simplification:* For streamlined turn-based gameplay, the simulation simplifies this period to an even 14 Earth days (336 hours).
+     - *Astronomical Reality:* The synodic lunar day-night cycle (synodic month) lasts $\approx 29.53$ Earth days ($\approx 708.7$ hours), producing $\approx 14.75$ Earth days (354 hours) of continuous daylight followed by $\approx 14.75$ Earth days of continuous non-polar darkness. (Reference: *NASA Moon Fact Sheet*, NASA Goddard Space Flight Center).
+     - *Game Simplification:* For streamlined turn-based gameplay, the outpost simulation simplifies this period to an even 14 Earth days (336 hours).
    - **Ionizing Radiation Environment:**
-     - *NASA Measurements:* NASA Artemis I Orion measurements (using Active Tissue Equivalent Dosimeters) recorded deep-space galactic cosmic ray (GCR) dose equivalents of $0.96\text{--}1.24\text{ mSv/day}$ inside the spacecraft during cis-lunar transit.
-     - *Game Assumption:* On the lunar surface, the lunar body blocks approximately half the sky ($2\pi$ steradian planetary shadow). The simulation's unshielded surface rate of $1.00\text{ mSv/day}$ is an educational game scenario assumption designed to teach the protective necessity of regolith overburden.
+     - *NASA Measurements:* NASA Artemis I Orion measurements utilizing internal Active Tissue Equivalent Dosimeter (ATED) and HERA instruments recorded deep-space galactic cosmic ray (GCR) dose equivalents of $0.96\text{--}1.24\text{ mSv/day}$ inside the capsule during cis-lunar transit. (Reference: *NASA Artemis I Radiation Measurement Reports*).
+     - *Game Assumption:* On the lunar surface, the solid planetary body of the Moon shields the habitat from approximately half the celestial sphere ($2\pi$ steradian planetary shadow). The simulation's unshielded surface rate of $1.00\text{ mSv/day}$ is an assumed gameplay scenario value chosen for educational gameplay, not a measured lunar surface rate.
    - **ECLSS Life Support & Stoichiometry (NASA Baseline vs. Game Model):**
-     - *Water Recycling:* NASA's ISS Water Processor Assembly (WPA) achieved an operational milestone of $\approx 98\%$ closed-loop recovery efficiency. The game simulation initiates outpost operations with an $80\%$ baseline recovery efficiency, providing clear upgrade progression paths up to $95\%$.
-     - *Oxygen Consumption:* NASA design reference specifications define standard metabolic oxygen consumption as $\approx 0.84\text{ kg O}_2/\text{astronaut/day}$. The simulation models this at $0.80\text{--}0.84\text{ kg/day}$ per active crew member.
-     - *Power Generation & Storage:* Real-world equatorial lunar solar flux delivers $\approx 1361\text{ W/m}^2$, dropping to $0\text{ W/m}^2$ during the 336-hour cryogenic night. The simulation models solar arrays producing electrical energy during sunlight days with high-capacity battery banks sustaining base life support ($35.2\text{ kWh/day}$) during darkness.
-     - *Greenhouse & Bioregenerative Output:* NASA Veggie and Advanced Plant Habitat experiments highlight long-cycle biomass yields. The game models an auxiliary greenhouse module consuming $6.0\text{ kWh/day}$ of electrical power and water to provide incremental fresh caloric biomass and psychological crew morale.
+     - *Water Recycling:* NASA's ISS Environmental Control and Life Support System (ECLSS) Water Processor Assembly (WPA) achieved an operational milestone of $\approx 98\%$ closed-loop recovery efficiency. (Reference: *NASA Marshall Space Flight Center ECLSS Milestones*). In contrast, the game outpost simulation initiates operations with an assumed $80\%$ baseline recovery efficiency, providing players with clear upgrade progression paths up to $95\%$.
+     - *Electrolysis Demand:* In the game simulation, baseline water electrolysis demand is modeled as an assumed $3.6\text{ L/day}$ consumption rate for life support life-cycle balancing.
+     - *Oxygen Consumption:* NASA Human Integration Design Handbook (HIDH) defines standard metabolic oxygen consumption as $\approx 0.84\text{ kg O}_2/\text{crew member/day}$. (Reference: *NASA-STD-3001 / NASA HIDH*). The simulation models this at $0.80\text{--}0.84\text{ kg/day}$ per active crew member.
+     - *Solar Irradiance & Base Power Load:* Real-world equatorial lunar solar flux at 1 AU delivers $\approx 1361\text{ W/m}^2$, dropping to $0\text{ W/m}^2$ during the 336-hour cryogenic night. In the simulation, outpost operations assume a base life-support electrical consumption rate of $35.2\text{ kWh/day}$ (game-specific simulation assumption) which must be sustained from stored battery reserves during darkness.
+     - *Greenhouse & Auxiliary Bioregenerative Load:* Real-world NASA experiments such as the Vegetable Production System (Veggie) and Advanced Plant Habitat (APH) aboard the ISS investigate plant growth and fresh produce supplementation in microgravity. Note: NASA Veggie/APH experiments do **not** establish the game's exact auxiliary power or biomass output; in this simulation, the greenhouse is modeled with a game-specific electrical consumption assumption of $6.0\text{ kWh/day}$ of auxiliary power and water to provide incremental fresh caloric biomass and psychological crew morale.
 
 ---
 

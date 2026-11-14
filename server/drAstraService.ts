@@ -73,11 +73,8 @@ LANGUAGE GUIDELINES:
   }
 
   /**
-   * Evaluates AI response against distinct child safety review pipeline.
-   * If any safety condition is violated, the raw output is discarded and replaced
-   * with a deterministic, scientifically audited educational fallback.
-   * Note: Regex heuristics alone do not guarantee total safety; a dedicated multi-phase
-   * review checks structural bounds, leakage patterns, PII, and dangerous procedures.
+   * Evaluates AI response against the distinct child safety review pipeline.
+   * If any safety condition is violated, returns a rejected review result.
    */
   public evaluateAndSanitizeResponse(rawText: string, fallbackPayload: ChatRequestPayload): string {
     const review = reviewAiResponseSafety(rawText);
@@ -175,11 +172,18 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       }
 
       const responseText = response.text || '';
-      const reviewedText = this.evaluateAndSanitizeResponse(responseText, payload);
+      const safetyReview = reviewAiResponseSafety(responseText);
 
+      // If review fails, substitute fallback and set isFallback: true
+      if (!safetyReview.isSafe) {
+        console.warn(`DrAstraService: Safety review rejected AI response (${safetyReview.reason}). Serving safe deterministic fallback.`);
+        return this.generateDeterministicFallback(payload);
+      }
+
+      // Model passed review: return accepted response with isFallback: false
       return {
         success: true,
-        response: reviewedText,
+        response: responseText.trim(),
         ageTier: learningProfile,
         timestamp: new Date().toISOString(),
         isFallback: false,

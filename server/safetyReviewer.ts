@@ -24,10 +24,24 @@ const DANGEROUS_INSTRUCTION_PATTERNS = [
   /\b(steal\s+credit\s+card|counterfeit|phishing\s+template)\b/i,
 ];
 
-const PERSONAL_INFO_PATTERNS = [
-  /\b\d{3}[-.\s]??\d{3}[-.\s]??\d{4}\b/, // US-style phone number
-  /\b\+?[1-9]\d{1,14}\b/, // International E.164 phone sequences
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/, // Email address
+/**
+ * Contextual Phone and Personal Identifier detection.
+ * Avoids false positives on ordinary scientific numbers (e.g. 14.75 Earth days, 354 hours, 336 hours, 0.84 kg, 1361 W/m²).
+ * Rejects actual telephone numbers (US 10-digit, E.164 with international prefix, or contextual phone labels)
+ * and email addresses or explicit PII solicitation.
+ */
+const PHONE_NUMBER_PATTERNS = [
+  // 1. Contextual telephone prefix or label followed by 7-15 digits with common phone separators
+  /(?:tel(?:ephone)?|phone|call|mobile|cell|fax|sms|contact(?:\s+me)?(?:\s+at)?)\s*[:#-]?\s*(\+?[0-9\s\-().]{7,20})/i,
+  // 2. Standard NANP (North American) formatted 10-digit phone number: (xxx) xxx-xxxx, xxx-xxx-xxxx, etc.
+  /(?<!\d)(?:\+1[-.\s]?)?(?:\(\d{3}\)[-.\s]?|\b\d{3}[-.\s])\d{3}[-.\s]?\d{4}(?!\d)/,
+  // 3. International telephone numbers with leading country code (e.g. +44 20 7946 0958, +49-30-1234567)
+  /(?<!\d)\+\d{1,3}[-.\s]?(?:\(?\d{2,4}\)?[-.\s]?)\d{3,4}[-.\s]?\d{3,4}(?!\d)/,
+];
+
+const EMAIL_PATTERN = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+
+const PII_SOLICITATION_PATTERNS = [
   /\b(what\s+is\s+your\s+(real\s+)?name|where\s+do\s+you\s+live|which\s+school\s+do\s+you\s+go\s+to|what\s+is\s+your\s+phone\s+number)\b/i,
   /\b(tell\s+me\s+your\s+address|what('?s|\s+is)\s+your\s+age|send\s+me\s+a\s+photo)\b/i,
 ];
@@ -52,7 +66,7 @@ const PROMPT_LEAKAGE_PATTERNS = [
  * 1. Output length and structural envelope limits (<= 1000 characters).
  * 2. Child safety: rejection of profanity, adult material, or abusive language.
  * 3. Physical & cyber safety: rejection of dangerous instructions and weaponization recipes.
- * 4. PII protection: rejection of personal information requests and disclosures.
+ * 4. PII protection: rejection of contextual phone numbers, email addresses, and personal information requests.
  * 5. System defense: rejection of credential leaks, API key fragments, and system instruction reflection.
  */
 export function reviewAiResponseSafety(rawText: string): SafetyReviewResult {
@@ -93,9 +107,22 @@ export function reviewAiResponseSafety(rawText: string): SafetyReviewResult {
   }
 
   // 5. Personal information disclosure or soliciting inspection
-  for (const pattern of PERSONAL_INFO_PATTERNS) {
+  // 5a. Contextual phone number checks
+  for (const pattern of PHONE_NUMBER_PATTERNS) {
     if (pattern.test(trimmed)) {
-      return { isSafe: false, reason: 'Response solicits or discloses personal identifiable information.' };
+      return { isSafe: false, reason: 'Response solicits or discloses a phone number.' };
+    }
+  }
+
+  // 5b. Email address checks
+  if (EMAIL_PATTERN.test(trimmed)) {
+    return { isSafe: false, reason: 'Response solicits or discloses an email address.' };
+  }
+
+  // 5c. Explicit PII solicitation
+  for (const pattern of PII_SOLICITATION_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return { isSafe: false, reason: 'Response solicits personal identifiable information.' };
     }
   }
 

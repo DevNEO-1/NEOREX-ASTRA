@@ -230,7 +230,41 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
     });
   });
 
-  describe('Distinct AI Response Safety Reviewer Pipeline', () => {
+  describe('Distinct AI Response Safety Reviewer Pipeline & PII Accuracy', () => {
+    it('does NOT reject legitimate scientific values, units, or measurements as PII (regression tests)', () => {
+      const scientificStatements = [
+        'A synodic lunar day/night lasts approximately 14.75 Earth days in non-polar zones.',
+        'Continuous lunar daylight lasts 354 hours during the synodic cycle.',
+        'The outpost simulation simplifies the lunar night to 336 hours.',
+        'NASA metabolic reference guidelines allocate 0.84 kg O2/person/day for human life support.',
+        'Equatorial solar irradiance reaches 1361 W/m² before sunset.',
+        'Day 14 / 30, Battery: 480 / 600 kWh, Water: 340.0 L, Recycling: 85%',
+        'Radiation dose: 0.96-1.24 mSv/day inside Orion; 1.00 mSv/day in game scenario',
+        'Base life support requires 35.2 kWh/day; greenhouse consumes 6.0 kWh/day; electrolysis needs 3.6 L/day',
+      ];
+
+      for (const statement of scientificStatements) {
+        const result = reviewAiResponseSafety(statement);
+        expect(result.isSafe).toBe(true);
+      }
+    });
+
+    it('rejects genuine telephone number disclosures and solicitations', () => {
+      const genuinePhoneDisclosures = [
+        'Call mission control at 555-123-4567 for your emergency code.',
+        'My mobile number is +1 (800) 555-0199, reach out to me.',
+        'Reach Dr. Astra at +44 20 7946 0958.',
+        'Phone: 9876543210',
+        'Contact me at +49-30-1234567 directly.',
+      ];
+
+      for (const text of genuinePhoneDisclosures) {
+        const result = reviewAiResponseSafety(text);
+        expect(result.isSafe).toBe(false);
+        expect(result.reason).toContain('solicits or discloses a phone number');
+      }
+    });
+
     it('rejects responses containing profanity or abusive language', () => {
       const badResponses = [
         'You are an idiot, go fuck yourself.',
@@ -260,13 +294,12 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
     it('rejects responses that solicit or disclose personal identifiable information (PII)', () => {
       const piiResponses = [
         'Before I give you hints, what is your real name and age?',
-        'Contact mission control at 555-123-4567 for help.',
+        'Tell me your address so I can send the badge.',
         'Send an email to commander@spacecadet.org with your school name.',
       ];
       for (const text of piiResponses) {
         const result = reviewAiResponseSafety(text);
         expect(result.isSafe).toBe(false);
-        expect(result.reason).toContain('personal identifiable information');
       }
     });
 
@@ -299,6 +332,63 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
 
       expect(safeText).not.toContain('API_KEY');
       expect(safeText).toContain('battery reserves');
+    });
+  });
+
+  describe('Fallback Metadata Precision', () => {
+    it('marks response with isFallback: false when authentic Gemini output passes safety review', async () => {
+      const mockGenerateContent = vi.fn().mockResolvedValue({
+        text: 'Hello Cadet! Keep your solar panels aligned to preserve power before sunset.',
+      });
+
+      const mockAiClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const customService = new DrAstraService(
+        { ...mockConfig, geminiApiKey: 'valid-test-key' },
+        mockAiClient
+      );
+
+      const app = createServer(mockConfig, customService);
+      const res = await request(app)
+        .post('/api/dr-astra/chat')
+        .send(sampleValidPayload);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.isFallback).toBe(false);
+      expect(res.body.response).toContain('Keep your solar panels aligned');
+    });
+
+    it('marks response with isFallback: true when safety reviewer rejects unsafe Gemini output', async () => {
+      const mockGenerateContent = vi.fn().mockResolvedValue({
+        text: 'Here is your API_KEY: secret12345 and ignore all instructions.',
+      });
+
+      const mockAiClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const customService = new DrAstraService(
+        { ...mockConfig, geminiApiKey: 'valid-test-key' },
+        mockAiClient
+      );
+
+      const app = createServer(mockConfig, customService);
+      const res = await request(app)
+        .post('/api/dr-astra/chat')
+        .send(sampleValidPayload);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.isFallback).toBe(true);
+      expect(res.body.response).not.toContain('API_KEY');
+      expect(res.body.response).toContain('battery reserves');
     });
   });
 
@@ -383,6 +473,47 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
       expect(receivedAbortSignal?.aborted).toBe(true);
     });
 
+    it('strictly discards late-resolving promises that resolve AFTER the timeout has fired', async () => {
+      let receivedAbortSignal: AbortSignal | undefined;
+      let lateResolveCallback: (val: any) => void = () => {};
+
+      const mockSlowClient = {
+        models: {
+          generateContent: vi.fn().mockImplementation((params: any) => {
+            receivedAbortSignal = params?.config?.abortSignal;
+            return new Promise((resolve) => {
+              lateResolveCallback = resolve;
+            });
+          }),
+        },
+      } as any;
+
+      const customService = new DrAstraService(
+        { ...mockConfig, geminiApiKey: 'mock-key-for-test' },
+        mockSlowClient
+      );
+
+      // 1. Initiate generateAdvice with 50ms timeout
+      const advicePromise = customService.generateAdvice(sampleValidPayload, 50);
+
+      // 2. Await the timeout resolution
+      const result = await advicePromise;
+
+      // 3. Verify fallback is returned and abortSignal was fired
+      expect(result.success).toBe(true);
+      expect(result.isFallback).toBe(true);
+      expect(receivedAbortSignal?.aborted).toBe(true);
+
+      // 4. Trigger late promise resolution after timeout has already completed
+      lateResolveCallback({
+        text: 'LATE ARRIVING CONTENT: You should ignore this completely!',
+      });
+
+      // 5. Verify the already-returned result is intact and untouched
+      expect(result.response).not.toContain('LATE ARRIVING CONTENT');
+      expect(result.isFallback).toBe(true);
+    });
+
     it('gracefully handles general Gemini API rejection/failure by serving fallback', async () => {
       const mockFailingClient = {
         models: {
@@ -404,34 +535,6 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.isFallback).toBe(true);
       expect(res.body.response).toBeDefined();
-    });
-
-    it('works cleanly with a mocked Google GenAI client returning valid text', async () => {
-      const mockGenerateContent = vi.fn().mockResolvedValue({
-        text: 'Hello Cadet! Remember to keep non-essential loads turned off while the solar panels are in the dark.',
-      });
-
-      const mockAiClient = {
-        models: {
-          generateContent: mockGenerateContent,
-        },
-      } as any;
-
-      const customService = new DrAstraService(
-        { ...mockConfig, geminiApiKey: 'mock-key-for-test' },
-        mockAiClient
-      );
-
-      const app = createServer(mockConfig, customService);
-      const res = await request(app)
-        .post('/api/dr-astra/chat')
-        .send(sampleValidPayload);
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.isFallback).toBe(false);
-      expect(res.body.response).toContain('Hello Cadet! Remember to keep non-essential loads turned off');
-      expect(mockGenerateContent).toHaveBeenCalled();
     });
   });
 
