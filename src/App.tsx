@@ -4,6 +4,7 @@ import { checkResourceWarnings } from './simulator/resources';
 import { Header } from './components/Header';
 import { ResourceCard } from './components/ResourceCard';
 import { CrewPanel } from './components/CrewPanel';
+import { OutpostScene3D } from './components/OutpostScene3D';
 import { ConstructionPanel } from './components/ConstructionPanel';
 import { LoadSheddingPanel } from './components/LoadSheddingPanel';
 import { TelemetryCharts } from './components/TelemetryCharts';
@@ -156,6 +157,11 @@ export const App: React.FC = () => {
             subtext="Procurement budget"
           />
 
+        </section>
+
+        {/* 3D Immersive Outpost Visualizer Layer */}
+        <section className="relative">
+          <OutpostScene3D gameState={gameState} />
         </section>
 
         {/* 3. Engineering Directives Progress Bar */}
