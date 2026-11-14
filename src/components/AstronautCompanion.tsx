@@ -148,72 +148,79 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
         };
       } else {
         return {
-          title: '🌙 Cryogenic Night Insolation Delta',
-          message: `Day ${day}: Solar input 0.0 W/m² (14-day synodic night model). Battery reserve: ${Math.round(resources.batteryKwh)} kWh. Primary ECLSS drain: 35.2 kWh/day.`,
-          hint: 'Shed non-critical sub-systems or purchase energy density battery upgrades.',
+          title: '❄️ Cryogenic Diurnal Dark Period',
+          message: `Lunar surface insolation = 0 W/m². Battery reserves at ${(resources.batteryKwh / resources.batteryCapacityKwh * 100).toFixed(1)}% capacity. Monitor discharge rate closely.`,
+          hint: 'Thermal and life-support baselines require 35.2 kWh/day minimum.',
           mood: 'caution',
         };
       }
     }
 
-    // Oxygen Running Low (< 40 kg)
-    if (resources.oxygenKg < 40) {
+    // Low Resources
+    if (resources.waterLitres < 100) {
       if (learningProfile === 'junior') {
         return {
-          title: '🫧 Fresh Air Warning!',
-          message: "Our oxygen tanks are getting low! Astronauts need clean air to breathe. Make sure we have water to turn into fresh air!",
-          hint: 'Keep water above 100 liters so our air machine can run!',
-          mood: 'alarm',
+          title: '💧 We Need Water!',
+          message: "Our water tank is getting low! Astronauts need water to drink and to make breathing air. Let's upgrade our water recycler!",
+          hint: 'Click on the Water Extractor or buy a water upgrade!',
+          mood: 'warning',
         };
       } else {
         return {
-          title: '💨 Oxygen Buffer Depleting',
-          message: `Oxygen reserve has dropped to ${resources.oxygenKg.toFixed(1)} kg. 4 crew consume 3.2 kg/day. Ensure water electrolysis has sufficient power.`,
-          hint: 'Electrolysis uses 1.125 L water per kg of O2 generated.',
-          mood: 'alarm',
+          title: '⚠️ Hydrology Warning',
+          message: `Water reserves at ${Math.round(resources.waterLitres)} L. Electrolysis and greenhouse irrigation will be throttled if reserves hit zero.`,
+          hint: 'Upgrade the water recycling processor or adjust greenhouse load.',
+          mood: 'warning',
         };
       }
     }
 
-    // Water Depleting (< 80 L)
-    if (resources.waterLitres < 80) {
+    // Nominal Day 1 Welcome
+    if (day === 1) {
       if (learningProfile === 'junior') {
         return {
-          title: '💧 Save Every Drop!',
-          message: "Our water tank is running low! Don't let our astronauts get thirsty. Upgrading our recycler cleans more water!",
-          hint: 'Upgrade the water recycler so we waste less moisture!',
-          mood: 'caution',
+          title: '👋 Welcome to the Moon, Explorer!',
+          message: "I'm Astra, your astronaut friend! We just landed. Look around our 3D moon base! Click on any building or astronaut to see how it works.",
+          hint: 'Press the bright blue "Next Day" button at the top to start mission time!',
+          mood: 'happy',
+        };
+      } else if (learningProfile === 'cadet') {
+        return {
+          title: '🚀 Artemis Base Alpha Operational',
+          message: "Welcome Cadet! You are in command of human survival on the Moon. Keep our 4 astronauts healthy and balance Power, Oxygen, Water, and Food.",
+          hint: 'Try clicking on the Solar Arrays or Greenhouse in 3D to inspect telemetry.',
+          mood: 'happy',
         };
       } else {
         return {
-          title: '💧 Hydrology Deficit Warning',
-          message: `Water reserves at ${resources.waterLitres.toFixed(1)} L. Net daily drain is outpacing reclamation efficiency.`,
-          hint: 'Upgrade Water Processor to 90%+ recovery or shed greenhouse crops.',
-          mood: 'caution',
+          title: '🎖️ Commander on Deck',
+          message: "All life-support telemetry initialized. ECLSS closed-loop targets active. Prepare for the 14-day lunar night and solar flare contingencies.",
+          hint: 'Review the Engineering Directives to unlock full Mars mission authorization.',
+          mood: 'happy',
         };
       }
     }
 
-    // Default Good Status
+    // General Positive Progress
     if (learningProfile === 'junior') {
       return {
-        title: '👋 Welcome to Space, Explorer!',
-        message: `I'm Dr. Astra! It is Day ${day} on our ${campaign === 'moon' ? 'Moon' : 'Mars'} adventure! Our astronauts are happy and healthy. Let's do some cool science experiments!`,
-        hint: 'Click the Science Lab button below to test how plants grow in space!',
+        title: '⭐ Great Job, Commander!',
+        message: `Day ${day} is going well! Our astronauts are happy and healthy. Did you know the Moon has only 1/6th of Earth's gravity? You can jump super high!`,
+        hint: 'Click "Science Experiments" to play fun space games!',
         mood: 'happy',
       };
     } else if (learningProfile === 'cadet') {
       return {
-        title: '🛰️ Mission Status Nominal',
-        message: `Day ${day} operational logs: Life support and electrical balances are stable. Maintain your daily logs and check telemetry charts regularly.`,
-        hint: 'Directives reward bonus Science Credits when completed!',
+        title: '📊 Mission Status Nominal',
+        message: `Day ${day} progress: Crew vitals steady. Keep an eye on battery capacity and consider building a hydroponic greenhouse for fresh food.`,
+        hint: 'Greenhouses need water and electricity, but produce 4 kg of food daily!',
         mood: 'happy',
       };
     } else {
       return {
-        title: '📊 ECLSS Equilibrium Stable',
-        message: `Day ${day} engineering telemetry indicates nominal metabolic mass balances. Closed-loop recovery systems operating within NASA Artemis planning boundaries.`,
-        hint: 'Monitor long-term cumulative radiation exposure during solar quiet periods.',
+        title: '📡 Outpost Telemetry Online',
+        message: `Day ${day}: Systems operating within standard nominal thresholds. ECLSS water recovery is ${(gameState.waterRecyclingEfficiency * 100).toFixed(0)}%.`,
+        hint: 'Inspect science citations in the header for exact NASA technical references.',
         mood: 'happy',
       };
     }
