@@ -1,8 +1,8 @@
-# Engineering & Scientific Reference Sheet
+# Engineering & Scientific Reference Sheet V1.2
 ## Project: NEOREX ASTRA — Simulation Engine Core
 ### NASA Space Apps Challenge 2026
 
-This reference sheet provides software engineers and technical leads with the explicit mathematical formulations and scientific constants powering the simulation engine.
+This reference sheet provides software engineers and technical leads with the explicit mathematical formulations, classification labels, and scientific constants powering the simulation engine.
 
 ---
 
@@ -21,7 +21,8 @@ $$\text{Water}_{\text{consumed, O2}} = \text{O}_{2\text{,generated}} \times 1.12
 $$\text{Power}_{\text{demand, O2}} = \text{O}_{2\text{,generated}} \times 6.0\text{ kWh/kg}$$
 
 * **NASA Reference Benchmark:** $0.84\text{ kg/person/day}$ (BVAD).
-* **Game Parameter:** $0.80\text{ kg/person/day}$ ($3.2\text{ kg}$ total for 4 crew).
+* **Game Parameter:** $0.80\text{ kg/person/day}$ ($3.2\text{ kg}$ total for 4 crew) [`GAME_ASSUMPTION`].
+* **Electrolysis Stoichiometry:** $1.125\text{ kg H}_2\text{O} / \text{kg O}_2$ [`SCIENCE_DERIVED`].
 
 ---
 
@@ -33,8 +34,10 @@ $$\text{Water}_{\text{recovered}} = \text{Water}_{\text{used, crew}} \times \eta
 
 $$\Delta \text{Water} = \text{Water}_{\text{recovered}} - \left( \text{Water}_{\text{used, crew}} + \text{Water}_{\text{consumed, O2}} + \text{Water}_{\text{greenhouse}} \right)$$
 
-* **NASA Reference Benchmark:** $\sim 90\%$ exploration standard, $98\%$ ISS 2023 milestone with BPA.
-* **Game Parameter:** $\eta_{\text{recycler}} \in [0.80, 0.99]$, starting at $0.80$ with $+0.10$ upgrade steps.
+* **NASA Reference Benchmark:** BVAD pure drinking: $1.62\text{ L/person/day}$; BVAD total prep + hygiene: $\sim 2.5\text{–}3.5\text{ L/person/day}$.
+* **Exploration & ISS Recovery Benchmarks:** $\sim 90\%$ exploration standard [`NASA_REFERENCE`], $98\%$ ISS 2023 milestone with BPA [`NASA_REFERENCE`].
+* **Game Parameter:** $12.0\text{ L/day}$ total for 4 crew ($3.0\text{ L/person/day}$) [`GAME_ASSUMPTION`].
+* **Game Recycling Progression:** $\eta_{\text{recycler}} \in [0.80, 0.99]$, starting at $0.80$ with $+0.10$ upgrade steps [`GAME_ASSUMPTION`].
 
 ---
 
@@ -44,9 +47,10 @@ $$\text{Dose}_{\text{incident}} = \text{Dose}_{\text{GCR, base}} + \text{Dose}_{
 
 $$\text{Dose}_{\text{absorbed}} = \text{Dose}_{\text{incident}} \times (1 - \eta_{\text{shielding}})$$
 
-* **NASA Reference Benchmark:** $0.96\text{–}1.24\text{ mSv/day}$ (Orion Artemis I HERA/MARE GCR data).
-* **Game Parameter:** $\text{Dose}_{\text{GCR, base}} = 1.00\text{ mSv/day}$; $\text{Dose}_{\text{SPE, moderate}} = +15\text{ mSv}$; $\text{Dose}_{\text{SPE, severe}} = +35\text{ mSv}$.
-* $\eta_{\text{shielding}} \in [0.30, 0.90]$.
+* **NASA Reference Benchmark:** $0.96\text{–}1.24\text{ mSv/day}$ (measured inside Orion spacecraft during Artemis I in cislunar/lunar orbit) [`NASA_REFERENCE`].
+* **Game Parameter:** Surface background $\text{Dose}_{\text{GCR, base}} = 1.00\text{ mSv/day}$ [`GAME_ASSUMPTION`].
+* **Solar Storm Model:** $\text{Dose}_{\text{SPE, moderate}} = +15\text{ mSv}$; $\text{Dose}_{\text{SPE, severe}} = +35\text{ mSv}$ [`GAME_ASSUMPTION`].
+* **Shielding Model:** Linear attenuation $\text{Dose}_{\text{absorbed}} = \text{Dose} \times (1 - \eta_{\text{shielding}})$ is an educational simplification [`GAME_ASSUMPTION`]; real physics requires exponential attenuation and secondary neutron transport.
 
 ---
 
@@ -66,8 +70,11 @@ $$P_{\text{base}} = \begin{cases}
 
 $$\text{Battery}_{\text{end}} = \min(C_{\text{battery}}, \max(0, \text{Battery}_{\text{start}} + P_{\text{gen}} - P_{\text{demand}}))$$
 
-* **NASA Reference Benchmark:** Synodic lunar night $= 14\text{ Earth days}$ in non-polar terrain.
-* **Game Parameter:** $C_{\text{battery}} = 600\text{ kWh} + 150\text{ kWh} \times N_{\text{upgrades}}$.
+* **Astronomical Night Benchmark:** Synodic lunar night $= 14.75\text{ Earth days}$ ($354\text{ hours}$) [`NASA_REFERENCE`].
+* **Simulation Night:** Integer turns $= 14\text{ Earth days}$ ($336\text{ hours}$) [`GAME_ASSUMPTION`].
+* **Solar Irradiance Ratio:** Mars / Moon solar irradiance $= 43.3\%$ at $1.52\text{ AU}$ ($590 / 1361\text{ W/m}^2$) [`NASA_REFERENCE`].
+* **Simulation Generation Ratio:** Mars $32\text{ kWh/sol}$ vs. Moon $45\text{ kWh/day}$ ($71.1\%$) represents an expanded Martian panel area [`GAME_ASSUMPTION`].
+* **Battery Storage:** $C_{\text{battery}} = 600\text{ kWh} + 150\text{ kWh} \times N_{\text{upgrades}}$ [`GAME_ASSUMPTION`].
 
 ---
 
@@ -77,11 +84,12 @@ $$\text{Food}_{\text{produced}} = N_{\text{active, GH}} \times 4.0\text{ kg/day}
 
 $$\text{Water}_{\text{demand, GH}} = N_{\text{active, GH}} \times 16.0\text{ L/day}$$
 
-* **NASA Reference Benchmark:** Veggie $= 6\text{ plant pillows}$; APH $= \text{up to } 135\text{ days}$.
-* **Game Parameter:** Hydroponic Greenhouse produces $+4.0\text{ kg food/day}$ at $16\text{ L water/day}$ and $6\text{ kWh/day}$.
+* **NASA Reference Benchmarks:** Veggie $= 6\text{ plant pillows}$ [`NASA_REFERENCE`]; APH $= \text{up to } 135\text{ days}$ research duration [`NASA_REFERENCE`].
+* **Simulation Harvest Rate:** $+4.0\text{ kg/day}$ fresh biomass at $16\text{ L water/day}$ and $6\text{ kWh/day}$ [`GAME_ASSUMPTION`]. Represents wet fresh biomass (including moisture), not dry edible grain, and is not an experimental yield validated by Veggie/APH.
 
 ---
 
-### 6. Lunar Volatile Ice Presence (Scientific Context)
+### 6. Lunar Volatile Ice & Geographic Setting
 
-* **NASA Reference Benchmark:** LCROSS Cabeus crater $= 5.5\% \pm 1.5\%$ (approx. $6\%$) water ice by mass in regolith ejecta.
+* **NASA Reference Benchmark:** LCROSS impact into Cabeus crater PSR detected $5.5\% \pm 1.5\%$ (approx. $6\%$) water ice by mass in ejecta plume [`NASA_REFERENCE`].
+* **Simulation Setting:** Artemis Base Alpha is located on the Shackleton Crater rim (~120 km from Cabeus). LCROSS confirmed regional volatile presence in polar PSRs, providing the scientific foundation for Shackleton outpost placement [`SCIENCE_DERIVED` / `GAME_ASSUMPTION`].

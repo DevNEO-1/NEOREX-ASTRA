@@ -5,9 +5,9 @@
     "authorOrMission": "NASA Johnson Space Center (NASA/TP-2015-218570)",
     "sourceUrl": "https://ntrs.nasa.gov/citations/20150003058",
     "category": "Life Support",
-    "measuredFact": "Standard NASA planning reference rates: Oxygen consumption is 0.84 kg/person/day; nutritional dry food solids requirement is 0.62 kg/person/day; direct drinking water requirement is 1.62 kg/person/day (total hydration + food prep + hygiene is ~2.5–3.5 L/person/day).",
-    "gameAssumption": "Outpost baseline for 4 crew: 3.2 kg O₂/day (0.80 kg/person), 12 L total potable water/day (3.0 L/person), and 6 kg wet food rations/day (1.5 kg/person).",
-    "simplificationRationale": "Rounds numbers to clean decimals for junior astronaut cognitive accessibility while preserving exact physiological proportions and closed-loop demand ratios."
+    "measuredFact": "Standard NASA planning reference rates: Oxygen consumption is 0.84 kg/person/day; nutritional dry food solids requirement is 0.62 kg/person/day; direct drinking water requirement is 1.62 kg/person/day (hygiene and food preparation add approximately 1.0–1.5 L/person/day, totaling ~2.5–3.5 L/person/day).",
+    "gameAssumption": "Outpost baseline for 4 crew: 3.2 kg O₂/day (0.80 kg/person), 12 L total potable water/day (3.0 L/person combining drinking and hygiene), and 6 kg wet food rations/day (1.5 kg/person rehydrated).",
+    "simplificationRationale": "Rounds numbers to clean decimals for junior astronaut cognitive accessibility while preserving physiological mass conservation. Total potable water is a game assumption inspired by, but not directly equivalent to, BVAD sub-allocations."
   },
   {
     "id": "iss-oxygen-generation",
@@ -15,7 +15,7 @@
     "authorOrMission": "NASA Marshall Space Flight Center & ISS ECLSS Office",
     "sourceUrl": "https://www.nasa.gov/international-space-station/space-station-research-and-technology/life-support-systems/",
     "category": "Life Support",
-    "measuredFact": "Water electrolysis converts deionized water into oxygen and hydrogen via 2 H2O -> 2 H2 + O2. Mass stoichiometry requires 1.125 kg of water per 1.0 kg of O2 produced (36 g H2O / 32 g O2). Operating cell power demand is ~4.0–6.0 kWh per kg O2.",
+    "measuredFact": "Water electrolysis converts deionized water into oxygen and hydrogen via 2 H2O -> 2 H2 + O2. Mass stoichiometry requires 1.125 kg of water per 1.0 kg of O2 produced (36.015 g H2O / 31.998 g O2). Operating cell power demand is ~4.0–6.0 kWh per kg O2.",
     "gameAssumption": "Generating 3.2 kg of O2 requires exactly 3.6 L of water and 19.2 kWh of electrical energy (6.0 kWh/kg).",
     "simplificationRationale": "Preserves exact chemical mass conservation: without water and electricity, oxygen generation is chemically impossible."
   },
@@ -35,9 +35,9 @@
     "authorOrMission": "NASA Human Research Program / HERA & MARE Experiments",
     "sourceUrl": "https://www.nasa.gov/directorates/esdmd/hhp/space-radiation/",
     "category": "Radiation",
-    "measuredFact": "Active sensors inside the uncrewed Orion spacecraft during the Artemis I mission measured a Galactic Cosmic Ray (GCR) dose-equivalent rate of 0.96–1.24 mSv/day in cislunar and lunar orbit. Solar Particle Events (SPEs) produce sudden proton flux increases delivering 15 to >100 mSv.",
-    "gameAssumption": "Nominal background dose is set to 1.00 mSv/day (matching the Artemis I range). Solar storms add +15 to +35 mSv. Base aluminum hull offers 30% shielding, and sintered regolith shelters increase shielding to 50–90%.",
-    "simplificationRationale": "Directly integrates Artemis I empirical flight data while modeling regolith mass attenuation without complex particle transport Monte Carlo code."
+    "measuredFact": "Active sensors inside the uncrewed Orion spacecraft during Artemis I measured a Galactic Cosmic Ray (GCR) dose-equivalent rate of 0.96–1.24 mSv/day in cislunar and lunar orbit. (Context: These were measured inside Orion in transit/orbit, not directly on the lunar surface).",
+    "gameAssumption": "Nominal surface background dose is set to 1.00 mSv/day as a game assumption inspired by the Artemis I data. Solar storms add +15 to +35 mSv. Linear shielding attenuation (1 - shielding) is a simplified educational gameplay model.",
+    "simplificationRationale": "Provides a realistic radiation risk order of magnitude without requiring complex Monte Carlo particle transport and secondary neutron backscatter simulations."
   },
   {
     "id": "lunar-synodic-cycle",
@@ -45,9 +45,9 @@
     "authorOrMission": "NASA Goddard Space Flight Center / UCLA",
     "sourceUrl": "https://www.lpi.usra.edu/lunar/missions/lro/",
     "category": "Lunar Environment",
-    "measuredFact": "The Moon has a synodic day of ~29.53 Earth days. In non-polar terrain, a surface outpost experiences approximately 14 continuous Earth days (354 hours) of solar daylight followed by 14 continuous Earth days of total darkness, with surface temperatures dropping below -130°C.",
-    "gameAssumption": "A 30-day lunar mission features Daylight on Days 1–14, Lunar Night on Days 15–28, and Dawn on Days 29–30.",
-    "simplificationRationale": "Forces commanders to solve the premier lunar surface engineering challenge: storing enough battery reserve and managing power loads to survive two weeks of darkness."
+    "measuredFact": "The Moon has a synodic day of ~29.53 Earth days. In non-polar terrain, a surface outpost experiences approximately 14.75 Earth days (354 hours) of solar daylight followed by 14.75 Earth days (354 hours) of total darkness, with surface temperatures dropping below -130°C.",
+    "gameAssumption": "A 30-day lunar mission features Daylight on Days 1–14, an integer 14 Earth days (336 hours) of Lunar Night on Days 15–28, and Dawn on Days 29–30.",
+    "simplificationRationale": "Discretizes the 354-hour lunar night into integer 24-hour simulation turns (336 hours) to confront students with energy storage dilemmas."
   },
   {
     "id": "lunar-ice-lcross",
@@ -55,9 +55,9 @@
     "authorOrMission": "NASA Ames Research Center / Science Magazine (Colaprete et al., 2010)",
     "sourceUrl": "https://www.nasa.gov/mission_pages/LCROSS/main/index.html",
     "category": "Lunar Environment",
-    "measuredFact": "The Lunar Crater Observation and Sensing Satellite (LCROSS) impacted the permanently shadowed region (PSR) of Cabeus crater, detecting water vapor and ice crystals estimating approximately 5.5% ± 1.5% (approx. 6%) water ice by mass in the ejecta plume.",
-    "gameAssumption": "Artemis Base Alpha is sited at the South Pole rim (Shackleton/Cabeus region), establishing the scientific premise for long-term water extraction and closed-loop hydrology.",
-    "simplificationRationale": "Grounds the outpost's location and life support dependencies in confirmed lunar volatile discoveries."
+    "measuredFact": "The Lunar Crater Observation and Sensing Satellite (LCROSS) impacted the permanently shadowed region (PSR) of Cabeus crater, detecting water vapor estimating approximately 5.5% ± 1.5% (approx. 6%) water ice by mass in the ejecta plume. Cabeus is situated ~120 km from Shackleton Crater.",
+    "gameAssumption": "Artemis Base Alpha is sited at the Shackleton Crater rim. LCROSS confirmed volatile ice in Cabeus, providing regional scientific foundation for locating an outpost near South Pole cold traps.",
+    "simplificationRationale": "Clearly distinguishes Cabeus (impact discovery site) from Shackleton (outpost location), while explaining the geological linkage."
   },
   {
     "id": "nasa-space-agriculture",
@@ -65,9 +65,9 @@
     "authorOrMission": "NASA Kennedy Space Center / ISS Space Biology",
     "sourceUrl": "https://www.nasa.gov/missions/station/iss-research/growing-plants-in-space/",
     "category": "Life Support",
-    "measuredFact": "The ISS Veggie production system accommodates approximately 6 plant pillows for fresh dietary supplements. The Advanced Plant Habitat (APH) is an automated, enclosed growth chamber supporting long-duration experiments lasting up to 135 days (e.g., dwarf wheat, chile peppers).",
-    "gameAssumption": "Hydroponic greenhouse modules produce +4.0 kg fresh biomass food/day, consuming 6 kWh electrical lighting power and 16 L water/day.",
-    "simplificationRationale": "Simulates agricultural balance where crops provide ongoing caloric production but introduce non-trivial water and electrical loads."
+    "measuredFact": "The ISS Veggie production system accommodates 6 plant pillows for microgravity salad-crop investigations. The Advanced Plant Habitat (APH) is an automated enclosed research facility supporting extended experiments up to 135 days (e.g., dwarf wheat, chile peppers).",
+    "gameAssumption": "Hydroponic greenhouse modules produce +4.0 kg fresh biomass food/day, consuming 6 kWh electrical power and 16 L water/day. This represents fresh wet biomass, not dry edible grain, and is an educational game assumption not scaled from Veggie/APH.",
+    "simplificationRationale": "Simulates agricultural balance where crops provide ongoing caloric production while imposing non-trivial water and electrical loads."
   },
   {
     "id": "nasa-mars-dra5",
@@ -75,8 +75,8 @@
     "authorOrMission": "NASA Mars Exploration Program (NASA/SP-2009-566)",
     "sourceUrl": "https://ntrs.nasa.gov/citations/20090012109",
     "category": "Mars ECLSS",
-    "measuredFact": "Mars orbits at ~1.52 AU from the Sun, reducing solar irradiance to ~590 W/m² (approximately 43% of Earth/Moon's 1361 W/m²). Atmospheric dust storms significantly increase optical depth (tau), reducing surface solar power by up to 80%.",
-    "gameAssumption": "Mars campaign solar generation yields 32 kWh/sol (compared to 45 kWh/day on the Moon), with higher baseline heating demand and dust storm mitigation requirements.",
-    "simplificationRationale": "Highlights the distinct planetary physics and engineering trade-offs when transitioning from lunar to Martian surface operations."
+    "measuredFact": "Mars orbits at ~1.52 AU from the Sun, reducing solar irradiance to ~590 W/m² (approximately 43.3% of Earth/Moon's 1361 W/m²). Atmospheric dust storms significantly increase optical depth (tau), reducing surface solar power by up to 80%.",
+    "gameAssumption": "Mars campaign solar generation yields 32 kWh/sol (compared to 45 kWh/day on the Moon). This 71.1% generation ratio reflects a larger deployed photovoltaic array surface area to compensate for the lower 43.3% solar irradiance.",
+    "simplificationRationale": "Accurately conveys the 43.3% solar irradiance deficit at 1.52 AU while explaining why surface outpost power arrays must be larger."
   }
 ]
