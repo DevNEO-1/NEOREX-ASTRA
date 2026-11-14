@@ -13,6 +13,8 @@ interface ResourceCardProps {
   colorScheme: 'cyan' | 'blue' | 'emerald' | 'amber' | 'purple' | 'gold';
   warningMessage?: string;
   subtext?: string;
+  juniorLabel?: string;
+  juniorExplanation?: string;
 }
 
 const colorStyles = {
@@ -72,6 +74,8 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
   colorScheme,
   warningMessage,
   subtext,
+  juniorLabel,
+  juniorExplanation,
 }) => {
   const styles = colorStyles[colorScheme];
   const percentage = maxCapacity ? Math.min(100, Math.max(0, (value / maxCapacity) * 100)) : undefined;
@@ -84,7 +88,14 @@ export const ResourceCard: React.FC<ResourceCardProps> = ({
           <div className={`p-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 ${styles.text}`}>
             <Icon className="w-4 h-4" />
           </div>
-          <span className="text-xs font-semibold text-slate-300 tracking-wide uppercase">{title}</span>
+          <div>
+            <span className="text-xs font-semibold text-slate-300 tracking-wide uppercase block">
+              {juniorLabel ? juniorLabel : title}
+            </span>
+            {juniorExplanation && (
+              <span className="text-[10px] text-slate-400 font-sans block">{juniorExplanation}</span>
+            )}
+          </div>
         </div>
 
         {/* Warning Badge if any */}

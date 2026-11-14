@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GameState } from '../simulator/types';
+import { LearningProfileTier, LEARNING_PROFILES } from '../simulator/learningProfiles';
 import { audioSystem } from '../utils/audioSystem';
 import { 
   Play, 
@@ -12,32 +13,43 @@ import {
   Compass, 
   Award,
   Volume2,
-  VolumeX
+  VolumeX,
+  FlaskConical,
+  GraduationCap
 } from 'lucide-react';
 
 interface HeaderProps {
   gameState: GameState;
   isPlaying: boolean;
+  learningProfile: LearningProfileTier;
   onTogglePlay: () => void;
   onAdvanceDay: () => void;
   onReset: () => void;
   onOpenCampaignModal: () => void;
   onOpenResearchModal: () => void;
   onOpenDebriefModal: () => void;
+  onOpenProfileModal?: () => void;
+  onOpenExperimentsModal?: () => void;
+  onOpenBadgesModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   gameState,
   isPlaying,
+  learningProfile,
   onTogglePlay,
   onAdvanceDay,
   onReset,
   onOpenCampaignModal,
   onOpenResearchModal,
   onOpenDebriefModal,
+  onOpenProfileModal,
+  onOpenExperimentsModal,
+  onOpenBadgesModal,
 }) => {
   const { day, totalDays, isDaylight, campaign, isMissionOver } = gameState;
   const [isMuted, setIsMuted] = useState<boolean>(audioSystem.getMuted());
+  const profile = LEARNING_PROFILES[learningProfile];
 
   useEffect(() => {
     setIsMuted(audioSystem.getMuted());
@@ -157,6 +169,42 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             )}
           </button>
+
+          {/* Learning Profile Selector Pill */}
+          {onOpenProfileModal && (
+            <button
+              onClick={onOpenProfileModal}
+              title="Change Training Profile (Junior / Cadet / Commander)"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${profile.colorScheme.badgeBg}`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>{profile.badge}</span>
+            </button>
+          )}
+
+          {/* Science Lab Experiments */}
+          {onOpenExperimentsModal && (
+            <button
+              onClick={onOpenExperimentsModal}
+              title="Interactive Science Lab & Hands-on Experiments"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium transition"
+            >
+              <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
+              <span>Science Lab</span>
+            </button>
+          )}
+
+          {/* Badges & Achievements */}
+          {onOpenBadgesModal && (
+            <button
+              onClick={onOpenBadgesModal}
+              title="Astronaut Achievements & Badges"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-400 text-xs font-medium transition"
+            >
+              <Award className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Badges</span>
+            </button>
+          )}
 
           {/* Scientific Research Modal */}
           <button

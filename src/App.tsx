@@ -16,6 +16,11 @@ import { ScientificResearchModal } from './components/ScientificResearchModal';
 import { CinematicIntro } from './components/CinematicIntro';
 import { BuildingInspectorModal, InspectableBuildingType } from './components/BuildingInspectorModal';
 import { AstronautInspectorModal } from './components/AstronautInspectorModal';
+import { AstronautCompanion } from './components/AstronautCompanion';
+import { ScienceExperimentsModal } from './components/ScienceExperimentsModal';
+import { BadgesModal } from './components/BadgesModal';
+import { LearningProfileModal } from './components/LearningProfileModal';
+import { LearningProfileTier, INITIAL_BADGES, ExplorerBadge } from './simulator/learningProfiles';
 import { audioSystem } from './utils/audioSystem';
 import { 
   Zap, 
@@ -50,6 +55,26 @@ export const App: React.FC = () => {
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
   const [isResearchModalOpen, setIsResearchModalOpen] = useState(false);
   const [isDebriefModalOpen, setIsDebriefModalOpen] = useState(false);
+  const [isExperimentsModalOpen, setIsExperimentsModalOpen] = useState(false);
+  const [isBadgesModalOpen, setIsBadgesModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  const [learningProfile, setLearningProfile] = useState<LearningProfileTier>(() => {
+    return (localStorage.getItem('astra_learning_profile') as LearningProfileTier) || 'junior';
+  });
+
+  const [badges, setBadges] = useState<ExplorerBadge[]>(() => {
+    try {
+      const saved = localStorage.getItem('astra_badges');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return INITIAL_BADGES;
+  });
+
+  const handleSelectProfile = (profile: LearningProfileTier) => {
+    setLearningProfile(profile);
+    localStorage.setItem('astra_learning_profile', profile);
+  };
 
   // Check current resource warnings
   const warnings = checkResourceWarnings(gameState);
@@ -64,6 +89,24 @@ export const App: React.FC = () => {
   const handleAdvanceDay = () => {
     audioSystem.playTelemetryClick();
     advanceDay();
+
+    // Check badge unlocks
+    setBadges(prev => {
+      const updated = prev.map(badge => {
+        if (badge.id === 'badge-first-step' && gameState.day >= 1) return { ...badge, unlocked: true };
+        if (badge.id === 'badge-sun-catcher' && gameState.infrastructure.solarArrays > 1) return { ...badge, unlocked: true };
+        if (badge.id === 'badge-green-thumb' && gameState.infrastructure.greenhouses > 0) return { ...badge, unlocked: true };
+        if (badge.id === 'badge-water-hero' && gameState.waterRecyclingEfficiency >= 0.85) return { ...badge, unlocked: true };
+        if (badge.id === 'badge-storm-shield' && gameState.shieldingPercentage >= 0.50) return { ...badge, unlocked: true };
+        if (badge.id === 'badge-night-survivor' && gameState.day >= 28 && gameState.resources.batteryKwh > 0) return { ...badge, unlocked: true };
+        if (badge.id === 'badge-mars-pioneer' && gameState.campaign === 'mars') return { ...badge, unlocked: true };
+        return badge;
+      });
+      try {
+        localStorage.setItem('astra_badges', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const handlePurchaseUpgrade = (upgradeId: any) => {
@@ -98,12 +141,16 @@ export const App: React.FC = () => {
       <Header
         gameState={gameState}
         isPlaying={isPlaying}
+        learningProfile={learningProfile}
         onTogglePlay={() => setIsPlaying(!isPlaying)}
         onAdvanceDay={handleAdvanceDay}
         onReset={() => startNewMission(gameState.campaign, gameState.difficulty)}
         onOpenCampaignModal={() => setIsCampaignModalOpen(true)}
         onOpenResearchModal={() => setIsResearchModalOpen(true)}
         onOpenDebriefModal={() => setIsDebriefModalOpen(true)}
+        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenExperimentsModal={() => setIsExperimentsModalOpen(true)}
+        onOpenBadgesModal={() => setIsBadgesModalOpen(true)}
       />
 
       {/* Main Mission Control Console */}
@@ -131,6 +178,8 @@ export const App: React.FC = () => {
           {/* Battery / Power */}
           <ResourceCard
             title="Battery Reserve"
+            juniorLabel={learningProfile === 'junior' ? '🔋 Space Battery' : undefined}
+            juniorExplanation={learningProfile === 'junior' ? 'Powers our lights & air!' : undefined}
             value={gameState.resources.batteryKwh}
             maxCapacity={gameState.resources.batteryCapacityKwh}
             unit="kWh"
@@ -145,6 +194,8 @@ export const App: React.FC = () => {
           {/* Oxygen */}
           <ResourceCard
             title="Habitat O₂"
+            juniorLabel={learningProfile === 'junior' ? '💨 Breathing Air' : undefined}
+            juniorExplanation={learningProfile === 'junior' ? 'Keeps astronauts breathing!' : undefined}
             value={gameState.resources.oxygenKg}
             unit="kg"
             dailyNetChange={latestDaily ? latestDaily.netOxygenKg : undefined}
@@ -158,6 +209,8 @@ export const App: React.FC = () => {
           {/* Water */}
           <ResourceCard
             title="Hydrology (H₂O)"
+            juniorLabel={learningProfile === 'junior' ? '💧 Clean Water' : undefined}
+            juniorExplanation={learningProfile === 'junior' ? 'To drink & grow crops!' : undefined}
             value={gameState.resources.waterLitres}
             unit="L"
             dailyNetChange={latestDaily ? latestDaily.netWaterLitres : undefined}
@@ -171,6 +224,8 @@ export const App: React.FC = () => {
           {/* Food */}
           <ResourceCard
             title="Food Rations"
+            juniorLabel={learningProfile === 'junior' ? '🍎 Space Food' : undefined}
+            juniorExplanation={learningProfile === 'junior' ? 'Feeds the hungry crew!' : undefined}
             value={gameState.resources.foodKg}
             unit="kg"
             dailyNetChange={latestDaily ? latestDaily.netFoodKg : undefined}
@@ -184,6 +239,8 @@ export const App: React.FC = () => {
           {/* Radiation Shielding */}
           <ResourceCard
             title="Hull Shielding"
+            juniorLabel={learningProfile === 'junior' ? '🛡️ Cosmic Shield' : undefined}
+            juniorExplanation={learningProfile === 'junior' ? 'Blocks dangerous space rays!' : undefined}
             value={Math.round(gameState.shieldingPercentage * 100)}
             unit="%"
             icon={Shield}
@@ -194,6 +251,8 @@ export const App: React.FC = () => {
           {/* Construction Credits */}
           <ResourceCard
             title="Mission Credits"
+            juniorLabel={learningProfile === 'junior' ? '🪙 Build Points' : undefined}
+            juniorExplanation={learningProfile === 'junior' ? 'Points to build cool machines!' : undefined}
             value={gameState.resources.credits}
             unit="Credits"
             icon={Coins}
@@ -307,6 +366,37 @@ export const App: React.FC = () => {
         astronautId={selectedAstronautId}
         gameState={gameState}
         onClose={() => setSelectedAstronautId(null)}
+      />
+
+      {/* Interactive Science Experiments Laboratory Modal */}
+      <ScienceExperimentsModal
+        isOpen={isExperimentsModalOpen}
+        onClose={() => setIsExperimentsModalOpen(false)}
+        gameState={gameState}
+        learningProfile={learningProfile}
+      />
+
+      {/* Explorer Badges & Achievement System Modal */}
+      <BadgesModal
+        isOpen={isBadgesModalOpen}
+        onClose={() => setIsBadgesModalOpen(false)}
+        badges={badges}
+      />
+
+      {/* Learning Profile Selector Modal */}
+      <LearningProfileModal
+        isOpen={isProfileModalOpen}
+        currentProfile={learningProfile}
+        onSelectProfile={handleSelectProfile}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      {/* Animated Astronaut Learning Companion (Dr. Astra) */}
+      <AstronautCompanion
+        gameState={gameState}
+        learningProfile={learningProfile}
+        onOpenExperiments={() => setIsExperimentsModalOpen(true)}
+        onOpenResearch={() => setIsResearchModalOpen(true)}
       />
 
       {/* Emergent Event Modal */}
