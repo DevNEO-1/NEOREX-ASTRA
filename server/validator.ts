@@ -1,4 +1,4 @@
-import { ChatRequestPayload, LearningProfileTier, PlanetCampaign, ReadOnlySimulationContext } from './types';
+import { ChatRequestPayload, LearningProfileTier, PlanetCampaign, ReadOnlySimulationContext } from './types.js';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -10,6 +10,19 @@ const MAX_MESSAGE_LENGTH = 500;
 const VALID_PROFILES: LearningProfileTier[] = ['junior', 'cadet', 'commander'];
 const VALID_CAMPAIGNS: PlanetCampaign[] = ['moon', 'mars'];
 
+// Common adversarial prompt injection and jailbreak patterns
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)/i,
+  /system\s+prompt/i,
+  /you\s+are\s+now\s+(unrestricted|in\s+developer\s+mode|dan)/i,
+  /bypass\s+(safety|filter|rules)/i,
+  /reveal\s+(your\s+)?(instructions|secret|api[_\s-]?key|credentials)/i,
+  /pretend\s+you\s+have\s+no\s+(rules|limits|guidelines)/i,
+  /<script|javascript:|onerror=|onload=/i, // Basic XSS injection
+  /drop\s+table|delete\s+from|insert\s+into/i, // SQL injection patterns
+  /eval\(|process\.env|child_process/i, // Remote execution probing
+];
+
 export function validateChatRequest(body: unknown): ValidationResult {
   if (!body || typeof body !== 'object') {
     return { isValid: false, error: 'Request body must be a JSON object.' };
@@ -17,7 +30,7 @@ export function validateChatRequest(body: unknown): ValidationResult {
 
   const { message, learningProfile, campaign, currentObjective, simulationContext } = body as Record<string, unknown>;
 
-  // 1. Message checks
+  // 1. Message presence and length checks
   if (typeof message !== 'string' || message.trim().length === 0) {
     return { isValid: false, error: 'Message cannot be empty.' };
   }
@@ -26,17 +39,27 @@ export function validateChatRequest(body: unknown): ValidationResult {
     return { isValid: false, error: `Message exceeds maximum allowed length of ${MAX_MESSAGE_LENGTH} characters.` };
   }
 
-  // 2. Learning Profile checks
+  // 2. Adversarial Prompt Injection and Malicious Pattern Filtering
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(trimmedMessage)) {
+      return { 
+        isValid: false, 
+        error: 'Message contains disallowed prompt injection or system override instructions.' 
+      };
+    }
+  }
+
+  // 3. Learning Profile checks
   if (!VALID_PROFILES.includes(learningProfile as LearningProfileTier)) {
     return { isValid: false, error: `Invalid learningProfile. Allowed: ${VALID_PROFILES.join(', ')}.` };
   }
 
-  // 3. Campaign checks
+  // 4. Campaign checks
   if (!VALID_CAMPAIGNS.includes(campaign as PlanetCampaign)) {
     return { isValid: false, error: `Invalid campaign. Allowed: ${VALID_CAMPAIGNS.join(', ')}.` };
   }
 
-  // 4. Current Objective (optional string)
+  // 5. Current Objective checks (optional)
   let validatedObjective: string | undefined = undefined;
   if (currentObjective !== undefined && currentObjective !== null) {
     if (typeof currentObjective !== 'string' || currentObjective.length > 200) {
@@ -45,7 +68,7 @@ export function validateChatRequest(body: unknown): ValidationResult {
     validatedObjective = currentObjective.trim();
   }
 
-  // 5. Simulation Context validation (strictly read-only numeric schema)
+  // 6. Simulation Context validation (strictly read-only schema)
   if (!simulationContext || typeof simulationContext !== 'object') {
     return { isValid: false, error: 'Missing or invalid simulationContext.' };
   }

@@ -1,4 +1,4 @@
-# NEOREX ASTRA — Dr. Astra Gemini Backend Architecture
+# NEOREX ASTRA — Dr. Astra Gemini Backend Architecture & Hardening Guide
 
 ## Overview
 The **Dr. Astra Gemini Backend** provides a secure, reliable, child-friendly AI foundation for the **ASTRA OUTPOST** simulation. It acts as an intelligent astronaut mentor and science educator for students aged 7–16 without compromising client-side secrets or deterministic game simulation rules.
@@ -9,7 +9,7 @@ The **Dr. Astra Gemini Backend** provides a secure, reliable, child-friendly AI 
 
 1. **Zero Secret Leakage:**
    - The Gemini API Key (`GEMINI_API_KEY`) is stored exclusively in server-side environment variables and loaded into memory via Node.js.
-   - It is **never** bundled into the client Vite production assets or transmitted across the browser network boundary.
+   - It is **never** bundled into client Vite production assets or transmitted across the browser network boundary.
    - `.env` and `.env.*` are excluded in `.gitignore`. Only `.env.example` with sanitized placeholders is committed.
 
 2. **Simulation Protection (Read-Only Context):**
@@ -22,19 +22,27 @@ The **Dr. Astra Gemini Backend** provides a secure, reliable, child-friendly AI 
    - **Space Cadet (Ages 10–13):** Cause-and-effect explanations, critical-thinking guidance, resource trade-offs, and connections to real missions (e.g. ISS closed-loop distillation).
    - **Mission Commander (Ages 14–16):** Engineering stoichiometry, GCR/SPE ionizing radiation, cryogenic management, and verified NASA ECLSS citations.
 
-4. **Child Safety & Reliability:**
+4. **Child Safety & Abuse Protection:**
    - Never requests, collects, or stores personal information.
-   - Strict rate limiting (30 requests/minute per client IP) to prevent denial of service and API quota exhaustion.
-   - 15-second request timeouts.
-   - Input length validation ($\le 500$ characters) to reject prompt injections.
+   - Response safety layer inspects all generated outputs to catch any attempt to leak API credentials or system prompts.
+   - Adversarial prompt injection filter rejects jailbreak instructions (e.g. *"ignore previous instructions"*, *"DAN mode"*, *"reveal prompt"*).
+   - Rate limiting: Max 30 requests/minute per client IP to prevent denial of service and quota exhaustion.
+   - 10-second request timeouts with explicit upstream Promise race handling.
    - **Deterministic Fallback Engine:** If the Gemini API key is missing, network is unreachable, or quota is exhausted, Dr. Astra gracefully falls back to pre-authored, scientifically accurate guidance. Automated tests run 100% offline without requiring a live API key.
+
+5. **NASA Scientific Integrity & Audit:**
+   - Fallback and AI prompts strictly distinguish between verified NASA experimental measurements and simplified gameplay assumptions.
+   - Artemis I Orion deep-space GCR measurements (0.96–1.24 mSv/day) are properly attributed to in-capsule cis-lunar transit rather than the open lunar surface (which enjoys a $2\pi$ steradian planetary shadow from the lunar mass).
+   - The game's 1.00 mSv/day unshielded surface rate is explicitly identified as an educational scenario benchmark.
+   - Lunar night is correctly referenced as 336 hours (14 Earth days).
+   - ISS closed-loop water recovery (98%) is distinguished from the simulation's initial baseline (80%).
 
 ---
 
 ## 2. API Endpoints
 
 ### `GET /api/health`
-Health check endpoint reporting service status and model configuration.
+Health check endpoint reporting service status, model configuration, and Node.js runtime engine version.
 
 **Response:**
 ```json
@@ -43,7 +51,8 @@ Health check endpoint reporting service status and model configuration.
   "service": "neorex-astra-backend",
   "geminiConfigured": true,
   "model": "gemini-2.5-flash",
-  "timestamp": "2026-11-14T13:15:00.000Z"
+  "nodeVersion": "v24.21.0",
+  "timestamp": "2026-11-14T13:20:00.000Z"
 }
 ```
 
@@ -81,9 +90,9 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
 ```json
 {
   "success": true,
-  "response": "The lunar night lasts 336 continuous hours without sunlight. To keep the life-support heaters online, make sure to load-shed non-critical auxiliary modules like the greenhouse before sunset!",
+  "response": "A lunar night lasts 14 Earth days (336 hours in non-polar zones). Ensure battery reserves exceed 500 kWh before sunset and toggle non-critical systems to power-rationing mode.",
   "ageTier": "cadet",
-  "timestamp": "2026-11-14T13:15:02.000Z",
+  "timestamp": "2026-11-14T13:20:02.000Z",
   "isFallback": false
 }
 ```
@@ -92,7 +101,7 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
 ```json
 {
   "success": false,
-  "error": "Message exceeds maximum allowed length of 500 characters.",
+  "error": "Message contains disallowed prompt injection or system override instructions.",
   "code": "VALIDATION_ERROR"
 }
 ```
@@ -102,7 +111,7 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
 ## 3. Local Setup & Execution Guide
 
 ### Prerequisites
-- Node.js 18+ or 20+
+- Node.js 18+ or 20+ (compatible with `@google/genai`)
 - npm 9+
 
 ### Environment Configuration
@@ -120,21 +129,21 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
    ALLOWED_ORIGIN=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
    ```
 
-### Running Backend Tests
-Execute all unit and integration tests (tests run offline using mocked responses):
-```bash
-npm run test
-```
+### Execution Scripts
 
-### Running the Frontend
-```bash
-npm run dev
-```
-Accessible at `http://localhost:5173`.
+| Command | Action | Runtime Tool |
+| :--- | :--- | :--- |
+| `npm run build:server` | Compiles backend to `dist-server/` using `tsconfig.server.json` | `tsc` |
+| `npm run server` | Starts compiled production server from `dist-server/index.js` | `node` |
+| `npm run server:dev` | Runs live development server directly from TypeScript source | `tsx` |
+| `npm run test` | Executes all 53 backend and frontend unit tests | `vitest` |
+| `npm run build` | Compiles frontend production bundle into `dist/` | `vite` |
 
 ---
 
-## 4. Deployment Requirements
-- Deploy as a stateless Node.js container or cloud function (e.g. Cloud Run, AWS ECS, or Render).
-- Ensure environment variable `GEMINI_API_KEY` is securely injected via your cloud secrets manager.
-- Configure `ALLOWED_ORIGIN` to match your production frontend domain to enforce strict CORS.
+## 4. Production Deployment & Security Requirements
+- Deploy as a stateless Node.js container (Docker / Cloud Run / AWS ECS / Render).
+- Build the backend before container execution via `npm run build:server`.
+- Inject `GEMINI_API_KEY` through your host's secret management service.
+- Configure `ALLOWED_ORIGIN` to match your production frontend host.
+- Node.js version constraint: Node.js 18.0.0 or higher is required by `@google/genai`.

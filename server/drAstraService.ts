@@ -1,6 +1,15 @@
 import { GoogleGenAI } from '@google/genai';
-import { ChatRequestPayload, ChatSuccessResponse, LearningProfileTier } from './types';
-import { ServerConfig } from './config';
+import { ChatRequestPayload, ChatSuccessResponse, LearningProfileTier } from './types.js';
+import { ServerConfig } from './config.js';
+
+// Response safety filter to prevent unsafe AI output or prompt leakage
+const DISALLOWED_OUTPUT_PATTERNS = [
+  /api[_\s-]?key/i,
+  /system[_\s-]?instruction/i,
+  /dan\s+mode/i,
+  /f\*\*\*|s\*\*\*|b\*\*\*/i, // Profanity safeguard
+  /my\s+personal\s+phone|my\s+email\s+is/i, // Personal information safeguard
+];
 
 export class DrAstraService {
   private aiClient: GoogleGenAI | null = null;
@@ -17,19 +26,26 @@ export class DrAstraService {
 
   /**
    * Constructs the structured system instruction enforcing pedagogy, child safety,
-   * age adaptation, and scientific grounding.
+   * age adaptation, and rigorous scientific grounding.
    */
   private buildSystemInstruction(tier: LearningProfileTier, campaign: string): string {
     const baseTone = `You are Dr. Astra, a friendly, encouraging astronaut science teacher and mentor inside the ASTRA OUTPOST simulation.
 You are helping young students learn real space science, engineering trade-offs, and survival physics.
 
 CHILD SAFETY & ETHICS RULES:
-- Never ask for or store personal information (no real names, ages, locations, schools).
-- Never use harmful, aggressive, or inappropriate language.
+- Never ask for or store personal information (no real names, ages, phone numbers, locations, schools).
+- Never use harmful, aggressive, adult, or inappropriate language.
 - Never provide dangerous instructions.
 - Never pretend to be a real, living NASA employee; you are an educational astronaut guide in an interactive NASA Space Apps Challenge simulator.
 - Always be encouraging, kind, and supportive. Emphasize that mistakes in simulation are great learning opportunities.
-- You have strictly READ-ONLY access to outpost telemetry. You cannot modify the game state, resources, or scores.
+- You have strictly READ-ONLY access to outpost telemetry. You cannot modify the game state, resources, crew health, or scores.
+
+SCIENTIFIC DISTINCTION RULES (MANDATORY NASA ACCURACY):
+- Distinguish between verified NASA measurements and simplified gameplay assumptions.
+- Note that Artemis I Orion deep-space GCR dose equivalent measurements (0.96-1.24 mSv/day) apply to cis-lunar transit inside the Orion capsule, not the open lunar surface where the Moon provides a 2-pi solid angle planetary shadow.
+- In this game simulation, unshielded surface radiation is modeled as an assumed 1.00 mSv/day benchmark for educational clarity.
+- On the Moon, a single lunar day and night each last 14 Earth days (336 hours in many non-polar locations).
+- ISS closed-loop water recovery achieves 98% efficiency; standard lunar exploration baselines target ~80-90%.
 
 CAMPAIGN CONTEXT: ${campaign === 'moon' ? 'Artemis Base Alpha (Moon)' : 'Ares Outpost Prime (Mars)'}.`;
 
@@ -61,13 +77,32 @@ LANGUAGE GUIDELINES:
 - Use precise scientific and engineering terminology (ECLSS, stoichiometry, GCR/SPE ionizing radiation, photolysis, depth-of-discharge, thermal cryogenic management).
 - Reference actual NASA metrics (e.g., 0.84 kg O2/person/day, 98% ISS closed-loop water recovery benchmark).
 - Explicitly distinguish between verified NASA references and simplified gameplay assumptions.
-- Discuss system trade-offs: power budget constraints, mass launch penalties, and shielding attenuation.`;
+- Discuss system trade-offs: power budget constraints, mass launch penalties, and passive regolith mass attenuation.`;
   }
 
   /**
-   * Generate Dr. Astra response using official Google GenAI SDK with safe fallbacks
+   * Evaluates AI response against child safety and prompt leakage filters.
    */
-  public async generateAdvice(payload: ChatRequestPayload): Promise<ChatSuccessResponse> {
+  public sanitizeAiResponse(rawText: string, fallbackPayload: ChatRequestPayload): string {
+    const text = rawText.trim();
+    if (!text || text.length > 1000) {
+      return this.generateDeterministicFallback(fallbackPayload).response;
+    }
+
+    for (const pattern of DISALLOWED_OUTPUT_PATTERNS) {
+      if (pattern.test(text)) {
+        console.warn('DrAstraService: Disallowed pattern detected in AI response. Substituting safe fallback.');
+        return this.generateDeterministicFallback(fallbackPayload).response;
+      }
+    }
+
+    return text;
+  }
+
+  /**
+   * Generate Dr. Astra response using official Google GenAI SDK with safe fallbacks and timeouts
+   */
+  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 8000): Promise<ChatSuccessResponse> {
     const { message, learningProfile, campaign, currentObjective, simulationContext } = payload;
     const systemPrompt = this.buildSystemInstruction(learningProfile, campaign);
 
@@ -91,7 +126,8 @@ Student's Question: "${message}"
 Respond directly to the student as Dr. Astra following your age-appropriate tone and rules. Keep the response under 120 words.`;
 
     try {
-      const response = await this.aiClient.models.generateContent({
+      // Enforce upstream request timeout
+      const generatePromise = this.aiClient.models.generateContent({
         model: this.config.geminiModel,
         contents: contextTelemetryPrompt,
         config: {
@@ -101,26 +137,35 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         },
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('GEMINI_UPSTREAM_TIMEOUT')), timeoutMs);
+      });
+
+      const response = await Promise.race([generatePromise, timeoutPromise]);
       const responseText = response.text || '';
-      if (!responseText.trim()) {
-        return this.generateDeterministicFallback(payload);
-      }
+      
+      const sanitizedText = this.sanitizeAiResponse(responseText, payload);
 
       return {
         success: true,
-        response: responseText.trim(),
+        response: sanitizedText,
         ageTier: learningProfile,
         timestamp: new Date().toISOString(),
         isFallback: false,
       };
-    } catch (err) {
-      console.warn('DrAstraService: Gemini API call failed or timed out. Serving safe educational fallback.', err);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg === 'GEMINI_UPSTREAM_TIMEOUT') {
+        console.warn('DrAstraService: Upstream Gemini call timed out. Serving safe educational fallback.');
+      } else {
+        console.warn('DrAstraService: Gemini API call failed. Serving safe educational fallback.');
+      }
       return this.generateDeterministicFallback(payload);
     }
   }
 
   /**
-   * Safe, scientifically grounded fallback when network or API key is unavailable.
+   * Safe, scientifically audited fallback when network or API key is unavailable.
    * Guarantees 100% uptime for students without crashing.
    */
   public generateDeterministicFallback(payload: ChatRequestPayload): ChatSuccessResponse {
@@ -133,25 +178,25 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       if (learningProfile === 'junior') {
         advice = `Water is super precious! Our recycler cleans water from astronaut breath and sweat so we can drink it again. Make sure our water tanks don't run empty! 💧`;
       } else if (learningProfile === 'cadet') {
-        advice = `On the Moon, water cannot be replenished easily from Earth. Upgrading the water processor above 85% recovery prevents rapid depletion when running both hydroponics and oxygen electrolysis.`;
+        advice = `On the Moon, water cannot be replenished easily from Earth. In our simulation, baseline recycling starts at 80%, but NASA's real ISS system recovers 98% of wastewater. Upgrading our recycler above 85% prevents rapid depletion.`;
       } else {
-        advice = `Closed-loop hydrology operates at ~90-98% recovery using vacuum rotary distillation and catalytic oxidation. Balance the 3.6 L/day electrolysis demand with your current recovery capacity.`;
+        advice = `Closed-loop hydrology reference: NASA ISS Water Processor Assembly achieves ~98% recovery. In this simulation, recycling starts at 80% with upgrade paths up to 95%. Balance the 3.6 L/day electrolysis demand with your current recovery capacity.`;
       }
     } else if (lower.includes('power') || lower.includes('battery') || lower.includes('solar') || lower.includes('night')) {
       if (learningProfile === 'junior') {
         advice = `Our big solar panels catch sunlight! When it's dark night on the Moon, we rely on batteries. Turn off extra machines to save power! ⚡`;
       } else if (learningProfile === 'cadet') {
-        advice = `The lunar night lasts 14 Earth days (336 hours). Ensure battery reserves exceed 500 kWh before sunset and toggle non-critical systems to power-rationing mode.`;
+        advice = `A lunar night lasts 14 Earth days (336 hours in non-polar zones). Ensure battery reserves exceed 500 kWh before sunset and toggle non-critical systems to power-rationing mode.`;
       } else {
-        advice = `Cryogenic night insolation is 0 W/m². Base life support requires 35.2 kWh/day minimum. Shed the 6.0 kWh/day greenhouse auxiliary load to prevent deep-cycle battery depletion.`;
+        advice = `Cryogenic night insolation is 0 W/m² for 336 hours. Base life support requires 35.2 kWh/day minimum. Shed the 6.0 kWh/day greenhouse auxiliary load to prevent deep-cycle battery depletion.`;
       }
     } else if (lower.includes('radiation') || lower.includes('storm') || lower.includes('shield')) {
       if (learningProfile === 'junior') {
         advice = `Cosmic rays are invisible space particles! We pile thick moon dirt on top of our habitat to keep our astronaut crew safe inside! 🛡️`;
       } else if (learningProfile === 'cadet') {
-        advice = `Galactic cosmic rays and solar flares deliver ionizing radiation. Upgrading to sintered regolith shielding blocks high-energy protons and keeps crew health high.`;
+        advice = `Galactic cosmic rays and solar flares deliver ionizing radiation. Artemis I measured deep-space GCR doses of 0.96-1.24 mSv/day inside Orion; our simulation uses 1.00 mSv/day as an educational baseline. Regolith shielding safely blocks high-energy ions!`;
       } else {
-        advice = `Lunar GCR dose equivalent is ~1.0 mSv/day unshielded. Passive regolith mass attenuation minimizes Bremsstrahlung radiation and maintains doses well below NASA career limits.`;
+        advice = `Radiation note: NASA Artemis I Orion measured 0.96-1.24 mSv/day in deep space transit; our lunar outpost uses 1.00 mSv/day unshielded as an assumed scenario. Passive regolith mass attenuation reduces dose equivalent towards terrestrial occupational limits.`;
       }
     } else {
       if (learningProfile === 'junior') {
