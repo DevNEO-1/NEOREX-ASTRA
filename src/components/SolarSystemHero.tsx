@@ -517,6 +517,9 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
   const [discoveredBodies, setDiscoveredBodies] = useState<Set<string>>(
     new Set(["sun", "earth", "moon", "mars"])
   );
+  const [scannedPlanetIds, setScannedPlanetIds] = useState<string[]>([]);
+  const [correctedSpacecraftIds, setCorrectedSpacecraftIds] = useState<string[]>([]);
+  const [telemetrySpacecraftIds, setTelemetrySpacecraftIds] = useState<string[]>([]);
 
   // Interactive Science Quiz State
   const [isQuizOpen, setIsQuizOpen] = useState<boolean>(false);
@@ -568,10 +571,13 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
   const handleSelectSpacecraft = useCallback((id: string) => {
     setSelectedSpacecraftId(id);
     if (playChime) playChime("click");
-    if (onAddXP) {
-      onAddXP(20, `Acquired telemetry from ${SPACECRAFTS.find((s) => s.id === id)?.name}`);
+    if (!telemetrySpacecraftIds.includes(id)) {
+      setTelemetrySpacecraftIds((prev) => [...prev, id]);
+      if (onAddXP) {
+        onAddXP(20, `Acquired telemetry from ${SPACECRAFTS.find((s) => s.id === id)?.name}`);
+      }
     }
-  }, [onAddXP, playChime]);
+  }, [onAddXP, playChime, telemetrySpacecraftIds]);
 
   const handleResetOrbits = () => {
     if (playChime) playChime("click");
@@ -1387,16 +1393,24 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
               {selectedPlanet.id !== "moon" && selectedPlanet.id !== "mars" && (
                 <button
                   className="action-btn secondary-action"
+                  disabled={scannedPlanetIds.includes(selectedPlanet.id)}
                   onClick={() => {
                     if (playChime) playChime("beep");
                     setIsQuizOpen(true);
-                    if (onAddXP) {
-                      onAddXP(15, `Science sensor probe on ${selectedPlanet.name}`);
+                    if (!scannedPlanetIds.includes(selectedPlanet.id)) {
+                      setScannedPlanetIds((prev) => [...prev, selectedPlanet.id]);
+                      if (onAddXP) {
+                        onAddXP(15, `Science sensor probe on ${selectedPlanet.name}`);
+                      }
                     }
                   }}
                 >
                   <Zap size={15} />
-                  <span>DEPLOY SCIENCE SENSOR SCAN (+15 XP)</span>
+                  <span>
+                    {scannedPlanetIds.includes(selectedPlanet.id)
+                      ? "✓ SENSOR SCAN LOGGED"
+                      : "DEPLOY SCIENCE SENSOR SCAN (+15 XP)"}
+                  </span>
                 </button>
               )}
             </div>
@@ -1464,15 +1478,23 @@ export const SolarSystemHero: React.FC<SolarSystemHeroProps> = ({
             <div className="holo-actions">
               <button
                 className="action-btn primary-action"
+                disabled={correctedSpacecraftIds.includes(selectedSpacecraft.id)}
                 onClick={() => {
                   if (playChime) playChime("success");
-                  if (onAddXP) {
-                    onAddXP(20, `Trajectory burn correction on ${selectedSpacecraft.name}`);
+                  if (!correctedSpacecraftIds.includes(selectedSpacecraft.id)) {
+                    setCorrectedSpacecraftIds((prev) => [...prev, selectedSpacecraft.id]);
+                    if (onAddXP) {
+                      onAddXP(20, `Trajectory burn correction on ${selectedSpacecraft.name}`);
+                    }
                   }
                 }}
               >
                 <Zap size={15} />
-                <span>EXECUTE ION COURSE CORRECTION (+20 XP)</span>
+                <span>
+                  {correctedSpacecraftIds.includes(selectedSpacecraft.id)
+                    ? "✓ COURSE CORRECTION COMPLETE"
+                    : "EXECUTE ION COURSE CORRECTION (+20 XP)"}
+                </span>
               </button>
               <button
                 className="action-btn secondary-action"

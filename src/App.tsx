@@ -31,6 +31,7 @@ import { CadetProgression } from './components/CadetProgression';
 import { LunarBaseOutpost } from './components/LunarBaseOutpost';
 import { StarfieldBackground } from './components/StarfieldBackground';
 import { adaptGameStateToEvanView } from './utils/evanSimulatorAdapter';
+import { cadetTracker } from './utils/cadetProgressionTracker';
 
 import { 
   Zap, 
@@ -94,45 +95,36 @@ export const App: React.FC = () => {
     return INITIAL_BADGES;
   });
 
-  // Cadet XP & Directive Progression (Integrated from Evan's Gamification Model)
-  const [cadetXp, setCadetXp] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('astra_cadet_xp');
-      if (saved) return Math.max(120, Number(saved) || 120);
-    } catch {}
-    return 120;
-  });
+  // Cadet XP & Directive Progression (Integrated from Evan's Gamification Model with anti-farming)
+  const [cadetXp, setCadetXp] = useState<number>(() => cadetTracker.getXp());
 
   const [completedDirectives, setCompletedDirectives] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('astra_completed_directives');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return ['step_sim'];
+    const list = cadetTracker.getCompletedDirectives();
+    return list.length > 0 ? list : ['step_sim'];
   });
 
   const [xpToast, setXpToast] = useState<{ message: string; amount: number } | null>(null);
 
   const handleAddCadetXP = useCallback((amount: number, reason: string) => {
-    setCadetXp(prev => {
-      const nextXp = prev + amount;
-      try { localStorage.setItem('astra_cadet_xp', String(nextXp)); } catch {}
-      return nextXp;
-    });
-    setXpToast({ amount, message: reason });
-    audioSystem.playUpgradeChime();
-    setTimeout(() => setXpToast(null), 3500);
+    const result = cadetTracker.claimReward(reason, amount, reason);
+    if (result.awarded) {
+      setCadetXp(result.newXp);
+      setXpToast({ amount: result.amount, message: result.reason });
+      audioSystem.playUpgradeChime();
+      setTimeout(() => setXpToast(null), 3500);
+    }
   }, []);
 
-  const handleClaimDirective = useCallback((directiveId: string, xpReward: number) => {
-    setCompletedDirectives(prev => {
-      if (prev.includes(directiveId)) return prev;
-      const updated = [...prev, directiveId];
-      try { localStorage.setItem('astra_completed_directives', JSON.stringify(updated)); } catch {}
-      handleAddCadetXP(xpReward, 'Directive Completed!');
-      return updated;
-    });
-  }, [handleAddCadetXP]);
+  const handleClaimDirective = useCallback((directiveId: string, xpReward: number = 40) => {
+    const result = cadetTracker.claimDirective(directiveId, xpReward);
+    if (result.awarded) {
+      setCadetXp(result.newXp);
+      setCompletedDirectives(cadetTracker.getCompletedDirectives());
+      setXpToast({ amount: result.amount, message: `Directive Completed: ${directiveId.toUpperCase()}` });
+      audioSystem.playUpgradeChime();
+      setTimeout(() => setXpToast(null), 3500);
+    }
+  }, []);
 
   const handlePlayChime = useCallback((type: 'click' | 'beep' | 'success' | 'warning') => {
     if (type === 'click' || type === 'beep') audioSystem.playTelemetryClick();
@@ -165,7 +157,13 @@ export const App: React.FC = () => {
   const handleAdvanceDay = () => {
     audioSystem.playTelemetryClick();
     advanceDay();
-    handleAddCadetXP(25, `Day ${gameState.day + 1} Mission Time Logged`);
+    const result = cadetTracker.recordDayAdvancement(gameState.campaign, gameState.day + 1);
+    if (result.awarded) {
+      setCadetXp(result.newXp);
+      setXpToast({ amount: result.amount, message: result.reason });
+      audioSystem.playUpgradeChime();
+      setTimeout(() => setXpToast(null), 3500);
+    }
 
     // Check badge unlocks
     setBadges(prev => {
@@ -553,15 +551,15 @@ export const App: React.FC = () => {
               onAdvanceHours={handleAdvanceDay}
               onToggleEva={() => {
                 audioSystem.playTelemetryClick();
-                handleAddCadetXP(25, 'Surface EVA Sortie Inspected');
+                handleAddCadetXP(25, 'Surface EVA Sortie Protocol Inspected');
               }}
               onRestCrew={(_h) => {
                 audioSystem.playTelemetryClick();
-                handleAddCadetXP(20, 'Crew Rest Cycle Executed');
+                handleAddCadetXP(20, 'Crew Rest Circadian Drill Executed');
               }}
               onTreatCrew={(_id) => {
                 audioSystem.playTelemetryClick();
-                handleAddCadetXP(30, 'Crew Health Vitals Serviced');
+                handleAddCadetXP(30, 'Crew First-Aid Protocol Serviced');
               }}
               onResupply={() => {
                 audioSystem.playUpgradeChime();

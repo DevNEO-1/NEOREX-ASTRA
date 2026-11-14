@@ -116,6 +116,7 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
   // Educational Quizzes State
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [solvedQuizzes, setSolvedQuizzes] = useState<string[]>([]);
+  const [completedFacilityActions, setCompletedFacilityActions] = useState<string[]>([]);
 
   // Surface Canvas Ref
   const surfaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -411,29 +412,35 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
 
   const handleFacilityAction = (type: FacilityData["primaryActionType"]) => {
     if (playChime) playChime("beep");
+    const actionKey = `facility_action_${type}`;
+    const isFirstTime = !completedFacilityActions.includes(actionKey);
+    if (isFirstTime) {
+      setCompletedFacilityActions((prev) => [...prev, actionKey]);
+    }
+
     switch (type) {
       case "hab_diagnostics":
-        if (onAddXP) onAddXP(20, "Life Support Equalization Diagnostic");
+        if (isFirstTime && onAddXP) onAddXP(20, "Life Support Equalization Diagnostic");
         break;
       case "solar_wipe":
-        if (onAddXP) onAddXP(25, "Electrostatic Regolith Wave Fired");
+        if (isFirstTime && onAddXP) onAddXP(25, "Electrostatic Regolith Wave Fired");
         break;
       case "comm_align":
-        if (onAddXP) onAddXP(20, "DSN Antenna Calibrated");
+        if (isFirstTime && onAddXP) onAddXP(20, "DSN Antenna Calibrated");
         break;
       case "o2_boost":
-        if (onAddXP) onAddXP(30, "MOXIE Regolith Electrolysis Boosted");
+        if (isFirstTime && onAddXP) onAddXP(30, "MOXIE Regolith Electrolysis Boosted");
         break;
       case "water_drill":
-        if (onAddXP) onAddXP(35, "Sub-Surface Core Ice Extracted");
+        if (isFirstTime && onAddXP) onAddXP(35, "Sub-Surface Core Ice Extracted");
         break;
       case "rover_deploy":
-        if (onAddXP) onAddXP(40, "ASTRA Rover LTV-01 Sortie Deployed");
+        if (isFirstTime && onAddXP) onAddXP(40, "ASTRA Rover LTV-01 Sortie Deployed");
         break;
       case "resupply_dock":
         onResupply();
         if (playChime) playChime("success");
-        if (onAddXP) onAddXP(50, "Logistics Resupply Pod Docked");
+        if (isFirstTime && onAddXP) onAddXP(50, "Logistics Resupply Pod Docked");
         if (onCompleteDirective) onCompleteDirective("dock_resupply", 40);
         break;
       case "eva_toggle":
@@ -1260,7 +1267,7 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
             </span>
             {onAdvanceHours && (
               <span className="badge-tag purple">
-                T+{simState.elapsedHours}H MET
+                T+{simState.elapsedHours}H MET (Day {simState.currentDay})
               </span>
             )}
           </div>
@@ -1572,10 +1579,9 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
                 onClick={() => {
                   if (playChime) playChime("beep");
                   onRestCrew(8);
-                  if (onAddXP) onAddXP(15, "Ordered 8-Hour Rest Cycle");
                 }}
               >
-                <HeartPulse size={14} /> ORDER 8-HOUR REST CYCLE
+                <HeartPulse size={14} /> ORDER 8-HOUR REST CYCLE (Circadian Drill)
               </button>
               <button
                 className={`sim-btn ${simState.isEvaActive ? "sim-btn-danger" : "sim-btn-primary"}`}
@@ -1585,7 +1591,7 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
                 }}
               >
                 <Activity size={14} />
-                {simState.isEvaActive ? "CONCLUDE EVA SORTIE" : "COMMENCE EVA SORTIE"}
+                {simState.isEvaActive ? "CONCLUDE EVA SORTIE (Simulated Drill)" : "COMMENCE EVA SORTIE (Simulated Drill)"}
               </button>
             </div>
           </div>
@@ -1680,7 +1686,6 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
                       onChange={(e) => {
                         if (playChime) playChime("beep");
                         setCrewAssignments((prev) => ({ ...prev, [member.id]: e.target.value }));
-                        if (onAddXP) onAddXP(10, `Reassigned ${member.name}`);
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -1700,10 +1705,9 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
                       e.stopPropagation();
                       if (playChime) playChime("beep");
                       onTreatCrew(member.id);
-                      if (onAddXP) onAddXP(20, `Administered Medical Aid to ${member.name}`);
                     }}
                   >
-                    <HeartPulse size={14} /> ADMINISTER MEDICAL AID
+                    <HeartPulse size={14} /> ADMINISTER MEDICAL AID (First-Aid Drill)
                   </button>
                 </div>
               );
@@ -2133,9 +2137,9 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
               <p>Surface Gravity</p>
               <h3>{simState.physics.gravity} m/s²</h3>
               <small>
-                {isMoon
+                {simState.physics.gravityNote || (isMoon
                   ? "16.6% Earth Gravity (1.625 m/s²)"
-                  : "37.9% Earth Gravity (3.720 m/s²)"}
+                  : "37.9% Earth Gravity (3.720 m/s²)")}
               </small>
             </div>
 
@@ -2143,29 +2147,29 @@ export const LunarBaseOutpost: React.FC<LunarBaseOutpostProps> = ({
               <p>Cumulative Radiation</p>
               <h3>{simState.physics.radiationDose.toFixed(3)} Sv</h3>
               <small>
-                {simState.physics.radiationDose >= 1.0
+                {simState.physics.radiationNote || (simState.physics.radiationDose >= 1.0
                   ? "CRITICAL: Acute Radiation Syndrome risk"
                   : simState.physics.radiationDose >= 0.5
                   ? "WARNING: Solar particle storm active"
-                  : "Nominal cosmic ray shielding buffer"}
+                  : "Nominal cosmic ray shielding buffer")}
               </small>
             </div>
 
             <div className="metric-card">
               <p>Ambient Temperature</p>
               <h3>{simState.physics.temperature}°C</h3>
-              <small>Thermal control loops balanced</small>
+              <small>{simState.physics.temperatureNote || "Thermal control loops balanced"}</small>
             </div>
 
             <div className="metric-card">
               <p>EVA Sortie Status</p>
               <h3>{simState.physics.evaDuration.toFixed(1)} h</h3>
               <small>
-                {simState.isEvaActive
+                {simState.physics.evaNote || (simState.isEvaActive
                   ? simState.physics.evaDuration > 8
                     ? "Sortie overtime (>8h limit)"
                     : "Sortie actively in progress"
-                  : "All crew inside airlock habitat"}
+                  : "All crew inside airlock habitat")}
               </small>
             </div>
           </div>
