@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { audioSystem } from '../utils/audioSystem';
+import { modelLoader } from '../utils/modelLoader';
 
 interface OutpostScene3DProps {
   gameState: GameState;
@@ -55,6 +56,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   const habitatLightsGroupRef = useRef<THREE.Group | null>(null);
   const shelterGroupRef = useRef<THREE.Group | null>(null);
   const waterRecyclerGroupRef = useRef<THREE.Group | null>(null);
+  const landerGroupRef = useRef<THREE.Group | null>(null);
 
   // Mouse drag & zoom state with smooth camera target
   const mouseStateRef = useRef({
@@ -362,42 +364,91 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     shelterGroupRef.current = shelterGroup;
     scene.add(shelterGroup);
 
-    // 4. Artemis Lunar Lander Spacecraft
+    // 4. Artemis Lunar Lander Spacecraft Group
     const landerGroup = new THREE.Group();
     landerGroup.position.set(22, 0.2, -12);
     landerGroup.userData = { type: 'building', buildingType: 'lander', title: 'Artemis Lander Spacecraft', category: 'Landing Stage' };
+    landerGroupRef.current = landerGroup;
 
-    const landerBodyGeo = new THREE.CylinderGeometry(2.4, 2.8, 6.5, 16);
-    const landerBodyMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.25, metalness: 0.85 });
-    const landerBody = new THREE.Mesh(landerBodyGeo, landerBodyMat);
-    landerBody.position.y = 4.8;
-    landerBody.castShadow = true;
-    landerGroup.add(landerBody);
+    // A. Procedural Fallback Mesh Creation Helper
+    const buildProceduralLanderFallback = () => {
+      const fallbackGroup = new THREE.Group();
+      fallbackGroup.name = 'landerProceduralFallback';
+      fallbackGroup.userData = { ...landerGroup.userData };
 
-    const noseGeo = new THREE.ConeGeometry(2.4, 2.5, 16);
-    const noseMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 });
-    const nose = new THREE.Mesh(noseGeo, noseMat);
-    nose.position.y = 9.3;
-    landerGroup.add(nose);
+      const landerBodyGeo = new THREE.CylinderGeometry(2.4, 2.8, 6.5, 16);
+      const landerBodyMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.25, metalness: 0.85 });
+      const landerBody = new THREE.Mesh(landerBodyGeo, landerBodyMat);
+      landerBody.position.y = 4.8;
+      landerBody.castShadow = true;
+      landerBody.userData = { ...landerGroup.userData };
+      fallbackGroup.add(landerBody);
 
-    // 4 Landing Legs
-    for (let legIdx = 0; legIdx < 4; legIdx++) {
-      const angle = (legIdx * Math.PI) / 2;
-      const legGeo = new THREE.CylinderGeometry(0.12, 0.12, 4.2);
-      const legMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 });
-      const leg = new THREE.Mesh(legGeo, legMat);
-      leg.position.set(Math.cos(angle) * 3.2, 1.8, Math.sin(angle) * 3.2);
-      leg.rotation.z = Math.cos(angle) * 0.45;
-      leg.rotation.x = Math.sin(angle) * 0.45;
-      landerGroup.add(leg);
+      const noseGeo = new THREE.ConeGeometry(2.4, 2.5, 16);
+      const noseMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 });
+      const nose = new THREE.Mesh(noseGeo, noseMat);
+      nose.position.y = 9.3;
+      nose.userData = { ...landerGroup.userData };
+      fallbackGroup.add(nose);
 
-      const footPadGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.15, 12);
-      const foot = new THREE.Mesh(footPadGeo, legMat);
-      foot.position.set(Math.cos(angle) * 4.2, 0.1, Math.sin(angle) * 4.2);
-      landerGroup.add(foot);
-    }
+      // 4 Landing Legs
+      for (let legIdx = 0; legIdx < 4; legIdx++) {
+        const angle = (legIdx * Math.PI) / 2;
+        const legGeo = new THREE.CylinderGeometry(0.12, 0.12, 4.2);
+        const legMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 });
+        const leg = new THREE.Mesh(legGeo, legMat);
+        leg.position.set(Math.cos(angle) * 3.2, 1.8, Math.sin(angle) * 3.2);
+        leg.rotation.z = Math.cos(angle) * 0.45;
+        leg.rotation.x = Math.sin(angle) * 0.45;
+        fallbackGroup.add(leg);
+
+        const footPadGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.15, 12);
+        const foot = new THREE.Mesh(footPadGeo, legMat);
+        foot.position.set(Math.cos(angle) * 4.2, 0.1, Math.sin(angle) * 4.2);
+        fallbackGroup.add(foot);
+      }
+
+      landerGroup.add(fallbackGroup);
+      interactiveObjectsRef.current.push(landerBody);
+    };
+
+    // Build procedural geometry immediately as baseline
+    buildProceduralLanderFallback();
+
+    // B. Asynchronous GLB 3D Asset Loading with Seamless Fallback Swap
+    let isSubscribed = true;
+    modelLoader.loadAndInstantiate('/models/lander/lander.glb', {
+      position: [0, 0, 0],
+      scale: 1.15,
+      castShadow: true,
+      receiveShadow: true,
+      userData: { ...landerGroup.userData },
+    }).then((loadedLander) => {
+      if (!isSubscribed || !loadedLander) return;
+
+      // Remove procedural fallback
+      const existingFallback = landerGroup.getObjectByName('landerProceduralFallback');
+      if (existingFallback) {
+        landerGroup.remove(existingFallback);
+        modelLoader.disposeHierarchy(existingFallback);
+      }
+
+      // Add high-detail realistic NASA lander asset
+      loadedLander.name = 'landerGLB';
+      landerGroup.add(loadedLander);
+
+      // Register interactive child meshes for raycasting
+      loadedLander.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          child.userData = { ...landerGroup.userData };
+          interactiveObjectsRef.current.push(child);
+        }
+      });
+    }).catch(() => {
+      // In case of error, procedural fallback remains active
+    });
+
     scene.add(landerGroup);
-    interactiveObjectsRef.current.push(landerBody);
 
     // 5. Astronaut Crew Group
     const astronautsGroup = new THREE.Group();
@@ -589,6 +640,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     window.addEventListener('resize', handleResize);
 
     return () => {
+      isSubscribed = false;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       container.removeEventListener('mousedown', handleMouseDown);
       container.removeEventListener('click', handleClick);
@@ -808,11 +860,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       }
     }
 
-    // G. Astronaut 3D Characters with Procedural Rigging & Raycaster Detection
+    // G. Astronaut 3D Characters with Asynchronous Realistic Asset & Procedural Fallback
     if (astronautsGroupRef.current) {
       const aGroup = astronautsGroupRef.current;
       while (aGroup.children.length > 0) {
-        aGroup.remove(aGroup.children[0]);
+        const oldChild = aGroup.children[0];
+        aGroup.remove(oldChild);
+        modelLoader.disposeHierarchy(oldChild);
       }
 
       const astronautPositions = [
@@ -822,19 +876,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         { x: 8.6, z: -4.5, label: crew[3]?.name || 'Power Spec' },
       ];
 
-      crew.forEach((member, idx) => {
-        if (member.health <= 0) return; // Incapacitated astronauts resting inside habitat
+      const roleColors = [0x00f2fe, 0x3b82f6, 0x10b981, 0xf59e0b];
 
-        const posConfig = astronautPositions[idx] || { x: 0, z: 6, label: member.name };
+      // Procedural fallback astronaut constructor
+      const createProceduralAstronaut = (member: typeof crew[0], idx: number, targetPos: { x: number; z: number }) => {
         const astronaut = new THREE.Group();
-        
-        // If a solar storm is active, astronauts gather near radiation vault
-        if (isSolarStorm) {
-          astronaut.position.set(-16 + idx * 1.2, 0, -6);
-        } else {
-          astronaut.position.set(posConfig.x, 0, posConfig.z);
-        }
-
+        astronaut.name = `astronaut_proc_${member.id}`;
+        astronaut.position.set(targetPos.x, 0, targetPos.z);
         astronaut.userData = { 
           type: 'astronaut', 
           astronautId: member.id, 
@@ -842,12 +890,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           category: member.role 
         };
 
-        // Torso & Life Support Backpack
         const suitMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
         const torsoGeo = new THREE.BoxGeometry(0.7, 0.9, 0.45);
         const torso = new THREE.Mesh(torsoGeo, suitMat);
         torso.position.y = 1.25;
         torso.castShadow = true;
+        torso.userData = { ...astronaut.userData };
         astronaut.add(torso);
 
         const backpackGeo = new THREE.BoxGeometry(0.55, 0.75, 0.3);
@@ -856,7 +904,6 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         backpack.position.set(0, 1.3, -0.32);
         astronaut.add(backpack);
 
-        // Helmet & Gold Visor
         const helmetGeo = new THREE.SphereGeometry(0.38, 16, 16);
         const helmet = new THREE.Mesh(helmetGeo, suitMat);
         helmet.position.y = 1.95;
@@ -869,7 +916,6 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         visor.position.y = 1.95;
         astronaut.add(visor);
 
-        // Arms
         const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
         const leftArm = new THREE.Mesh(armGeo, suitMat);
         leftArm.name = 'leftArm';
@@ -881,7 +927,6 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         rightArm.position.set(0.48, 1.25, 0);
         astronaut.add(rightArm);
 
-        // Legs
         const legMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0 });
         const leftLegGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.8, 8);
         const leftLeg = new THREE.Mesh(leftLegGeo, legMat);
@@ -892,8 +937,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         rightLeg.position.set(0.2, 0.4, 0);
         astronaut.add(rightLeg);
 
-        // Beacon / Role indicator ring under feet
-        const roleColors = [0x00f2fe, 0x3b82f6, 0x10b981, 0xf59e0b];
+        // Role indicator ring
         const ringGeo = new THREE.RingGeometry(0.5, 0.68, 16);
         const ringMat = new THREE.MeshBasicMaterial({ color: roleColors[idx] || 0xffffff, side: THREE.DoubleSide });
         const ring = new THREE.Mesh(ringGeo, ringMat);
@@ -901,8 +945,83 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         ring.position.y = 0.05;
         astronaut.add(ring);
 
-        aGroup.add(astronaut);
-        interactiveObjectsRef.current.push(torso);
+        return { group: astronaut, interactiveMesh: torso };
+      };
+
+      // Populate initial astronauts with procedural geometry
+      crew.forEach((member, idx) => {
+        if (member.health <= 0) return;
+
+        const posConfig = astronautPositions[idx] || { x: 0, z: 6, label: member.name };
+        const targetPos = isSolarStorm ? { x: -16 + idx * 1.2, z: -6 } : { x: posConfig.x, z: posConfig.z };
+
+        const { group: procAstro, interactiveMesh } = createProceduralAstronaut(member, idx, targetPos);
+        aGroup.add(procAstro);
+        interactiveObjectsRef.current.push(interactiveMesh);
+      });
+
+      // Asynchronously load NASA Astronaut GLB model and replace procedural meshes
+      let isCrewMounted = true;
+      modelLoader.loadModel('/models/astronaut/astronaut.glb').then((cachedAstro) => {
+        if (!isCrewMounted || !aGroup) return;
+
+        crew.forEach((member, idx) => {
+          if (member.health <= 0) return;
+
+          const posConfig = astronautPositions[idx] || { x: 0, z: 6, label: member.name };
+          const targetPos = isSolarStorm ? { x: -16 + idx * 1.2, z: -6 } : { x: posConfig.x, z: posConfig.z };
+
+          const astronautUserData = { 
+            type: 'astronaut', 
+            astronautId: member.id, 
+            title: member.name, 
+            category: member.role 
+          };
+
+          // Clone the cached astronaut asset with proper scale and coordinate rotation
+          const astroInstance = modelLoader.instantiateModel(cachedAstro, {
+            position: [0, 0, 0],
+            rotation: [0, idx * 0.4, 0],
+            scale: 0.026,
+            castShadow: true,
+            receiveShadow: true,
+            userData: astronautUserData,
+          });
+
+          // Outer container to preserve idle animation bounce
+          const astroWrapper = new THREE.Group();
+          astroWrapper.name = `astronaut_glb_${member.id}`;
+          astroWrapper.position.set(targetPos.x, 0, targetPos.z);
+          astroWrapper.userData = astronautUserData;
+          astroWrapper.add(astroInstance);
+
+          // Add role indicator ring
+          const ringGeo = new THREE.RingGeometry(0.55, 0.72, 16);
+          const ringMat = new THREE.MeshBasicMaterial({ color: roleColors[idx] || 0xffffff, side: THREE.DoubleSide });
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.y = 0.05;
+          astroWrapper.add(ring);
+
+          // Find and swap procedural fallback
+          const existingProc = aGroup.getObjectByName(`astronaut_proc_${member.id}`);
+          if (existingProc) {
+            aGroup.remove(existingProc);
+            modelLoader.disposeHierarchy(existingProc);
+          }
+
+          aGroup.add(astroWrapper);
+
+          // Add interactive raycasting meshes
+          astroInstance.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              child.userData = { ...astronautUserData };
+              interactiveObjectsRef.current.push(child);
+            }
+          });
+        });
+      }).catch(() => {
+        // Fallback remains active on error
       });
     }
 
