@@ -118,7 +118,8 @@ export function stepSimulationDay(
 
   const updatedObjectives = state.objectives.map(obj => {
     if (obj.achieved) return obj;
-    if (obj.targetCondition(candidateStateForObjectives)) {
+    const isAchieved = typeof obj.targetCondition === 'function' ? obj.targetCondition(candidateStateForObjectives) : false;
+    if (isAchieved) {
       return {
         ...obj,
         achieved: true,

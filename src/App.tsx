@@ -21,6 +21,7 @@ import { AstronautCompanion } from './components/AstronautCompanion';
 import { ScienceExperimentsModal } from './components/ScienceExperimentsModal';
 import { BadgesModal } from './components/BadgesModal';
 import { LearningProfileModal } from './components/LearningProfileModal';
+import { JuniorAdventureModal } from './components/JuniorAdventureModal';
 import { LearningProfileTier, INITIAL_BADGES, ExplorerBadge } from './simulator/learningProfiles';
 import { audioSystem } from './utils/audioSystem';
 import { 
@@ -61,6 +62,7 @@ export const App: React.FC = () => {
   const [isExperimentsModalOpen, setIsExperimentsModalOpen] = useState(false);
   const [isBadgesModalOpen, setIsBadgesModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isJuniorAdventureOpen, setIsJuniorAdventureOpen] = useState(false);
 
   const [learningProfile, setLearningProfile] = useState<LearningProfileTier>(() => {
     return (localStorage.getItem('astra_learning_profile') as LearningProfileTier) || 'junior';
@@ -164,6 +166,7 @@ export const App: React.FC = () => {
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
         onOpenExperimentsModal={() => setIsExperimentsModalOpen(true)}
         onOpenBadgesModal={() => setIsBadgesModalOpen(true)}
+        onOpenJuniorAdventure={() => setIsJuniorAdventureOpen(true)}
       />
 
       {/* Main Mission Control Console */}
@@ -404,12 +407,28 @@ export const App: React.FC = () => {
         onClose={() => setIsProfileModalOpen(false)}
       />
 
+      {/* Junior Explorer Guided Adventure Modal */}
+      <JuniorAdventureModal
+        isOpen={isJuniorAdventureOpen}
+        onClose={() => setIsJuniorAdventureOpen(false)}
+        onAdvanceDay={handleAdvanceDay}
+        onOpenExperiments={() => {
+          setIsJuniorAdventureOpen(false);
+          setIsExperimentsModalOpen(true);
+        }}
+        onOpenBadges={() => {
+          setIsJuniorAdventureOpen(false);
+          setIsBadgesModalOpen(true);
+        }}
+      />
+
       {/* Animated Astronaut Learning Companion (Dr. Astra) */}
       <AstronautCompanion
         gameState={gameState}
         learningProfile={learningProfile}
         onOpenExperiments={() => setIsExperimentsModalOpen(true)}
         onOpenResearch={() => setIsResearchModalOpen(true)}
+        onOpenJuniorAdventure={() => setIsJuniorAdventureOpen(true)}
       />
 
       {/* Emergent Event Modal */}

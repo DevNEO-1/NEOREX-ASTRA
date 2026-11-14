@@ -15,7 +15,8 @@ import {
   Volume2,
   VolumeX,
   FlaskConical,
-  GraduationCap
+  GraduationCap,
+  Sparkles
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -31,6 +32,7 @@ interface HeaderProps {
   onOpenProfileModal?: () => void;
   onOpenExperimentsModal?: () => void;
   onOpenBadgesModal?: () => void;
+  onOpenJuniorAdventure?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenProfileModal,
   onOpenExperimentsModal,
   onOpenBadgesModal,
+  onOpenJuniorAdventure,
 }) => {
   const { day, totalDays, isDaylight, campaign, isMissionOver } = gameState;
   const [isMuted, setIsMuted] = useState<boolean>(audioSystem.getMuted());
@@ -179,6 +182,22 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <GraduationCap className="w-3.5 h-3.5" />
               <span>{profile.badge}</span>
+            </button>
+          )}
+
+          {/* Junior Adventure Guided Journey (Prominent for Junior Explorer) */}
+          {onOpenJuniorAdventure && (
+            <button
+              onClick={onOpenJuniorAdventure}
+              title="Junior Astronaut Guided Space Adventure"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition ${
+                learningProfile === 'junior'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 border-amber-400 shadow-glow-amber animate-pulse'
+                  : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Junior Adventure</span>
             </button>
           )}
 

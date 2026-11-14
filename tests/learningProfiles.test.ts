@@ -55,4 +55,38 @@ describe('NEOREX ASTRA V2.2 — Adaptive Learning & Educational Systems', () => 
     expect(moonState.day).toBe(1);
     expect(moonState.resources.batteryKwh).toBeGreaterThan(0);
   });
+
+  it('provides 9-step guided junior astronaut adventure with Dr. Astra explanations', async () => {
+    const { JUNIOR_ADVENTURE_STEPS } = await import('../src/components/JuniorAdventureModal');
+    expect(JUNIOR_ADVENTURE_STEPS.length).toBe(9);
+
+    // Step 1: Welcome
+    expect(JUNIOR_ADVENTURE_STEPS[0].title).toContain('Welcome, Junior Astronaut');
+    // Step 2: Dr. Astra & crew
+    expect(JUNIOR_ADVENTURE_STEPS[1].title).toContain('Meet Dr. Astra');
+    // Step 3: Moon base
+    expect(JUNIOR_ADVENTURE_STEPS[2].title).toContain('Explore Your Moon Base');
+    // Step 4: Oxygen
+    expect(JUNIOR_ADVENTURE_STEPS[3].title).toContain('Oxygen');
+    expect(JUNIOR_ADVENTURE_STEPS[3].speechBubble).toContain('Astronauts need oxygen to breathe');
+    // Step 5: Water
+    expect(JUNIOR_ADVENTURE_STEPS[4].title).toContain('Water');
+    expect(JUNIOR_ADVENTURE_STEPS[4].speechBubble).toContain('Water keeps astronauts healthy');
+    // Step 6: Solar Energy
+    expect(JUNIOR_ADVENTURE_STEPS[5].title).toContain('Solar Energy');
+    expect(JUNIOR_ADVENTURE_STEPS[5].speechBubble).toContain('Solar panels collect');
+    // Step 7: Radiation Shelter
+    expect(JUNIOR_ADVENTURE_STEPS[6].title).toContain('Protect Your Astronauts');
+    expect(JUNIOR_ADVENTURE_STEPS[6].speechBubble).toContain('Space has invisible rays');
+    // Step 8: First Mission
+    expect(JUNIOR_ADVENTURE_STEPS[7].title).toContain('Complete Your First Mission');
+    // Step 9: Reward
+    expect(JUNIOR_ADVENTURE_STEPS[8].title).toContain('Earn Your Reward');
+    expect(JUNIOR_ADVENTURE_STEPS[8].kidTakeaway).toContain('Explorer Badges');
+
+    for (const step of JUNIOR_ADVENTURE_STEPS) {
+      expect(step.funFact.length).toBeGreaterThan(15);
+      expect(step.actionText.length).toBeGreaterThan(3);
+    }
+  });
 });

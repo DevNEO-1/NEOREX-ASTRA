@@ -16,6 +16,7 @@ interface AstronautCompanionProps {
   learningProfile: LearningProfileTier;
   onOpenExperiments?: () => void;
   onOpenResearch?: () => void;
+  onOpenJuniorAdventure?: () => void;
 }
 
 export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
@@ -23,6 +24,7 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
   learningProfile,
   onOpenExperiments,
   onOpenResearch,
+  onOpenJuniorAdventure,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -263,7 +265,20 @@ export const AstronautCompanion: React.FC<AstronautCompanionProps> = ({
         </div>
 
         {/* Action quick links */}
-        <div className="flex items-center justify-between gap-2 pt-1">
+        <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+          {onOpenJuniorAdventure && learningProfile === 'junior' && (
+            <button
+              onClick={() => {
+                audioSystem.playTelemetryClick();
+                onOpenJuniorAdventure();
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-glow-amber transition"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Junior Adventure</span>
+            </button>
+          )}
+
           {onOpenExperiments && (
             <button
               onClick={() => {
