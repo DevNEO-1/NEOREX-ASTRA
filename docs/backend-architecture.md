@@ -111,7 +111,7 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
 ## 3. Local Setup & Execution Guide
 
 ### Prerequisites
-- Node.js 18+ or 20+ (compatible with `@google/genai`)
+- Node.js >= 22.0.0 (strictly required by `@google/genai` official SDK engine specification)
 - npm 9+
 
 ### Environment Configuration
@@ -146,4 +146,4 @@ Ask Dr. Astra for educational guidance, hints, or scientific explanations.
 - Build the backend before container execution via `npm run build:server`.
 - Inject `GEMINI_API_KEY` through your host's secret management service.
 - Configure `ALLOWED_ORIGIN` to match your production frontend host.
-- Node.js version constraint: Node.js 18.0.0 or higher is required by `@google/genai`.
+- Node.js version constraint: Node.js >= 22.0.0 is strictly required by `@google/genai` package metadata engine specification.

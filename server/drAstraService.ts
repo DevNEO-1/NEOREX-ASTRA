@@ -44,8 +44,8 @@ SCIENTIFIC DISTINCTION RULES (MANDATORY NASA ACCURACY):
 - Distinguish between verified NASA measurements and simplified gameplay assumptions.
 - Note that Artemis I Orion deep-space GCR dose equivalent measurements (0.96-1.24 mSv/day) apply to cis-lunar transit inside the Orion capsule, not the open lunar surface where the Moon provides a 2-pi solid angle planetary shadow.
 - In this game simulation, unshielded surface radiation is modeled as an assumed 1.00 mSv/day benchmark for educational clarity.
-- On the Moon, a single lunar day and night each last 14 Earth days (336 hours in many non-polar locations).
-- ISS closed-loop water recovery achieves 98% efficiency; standard lunar exploration baselines target ~80-90%.
+- On the Moon, an astronomical synodic lunar day and night each last approximately 14.75 Earth days (354 hours synodic month / 2); the simulation uses a 14-day (336-hour) gameplay simplification for non-polar locations.
+- NASA's ISS closed-loop water recovery system achieves ~98% recovery efficiency milestone, whereas our simulation uses an 80% baseline with upgrade paths.
 
 CAMPAIGN CONTEXT: ${campaign === 'moon' ? 'Artemis Base Alpha (Moon)' : 'Ares Outpost Prime (Mars)'}.`;
 
@@ -100,9 +100,10 @@ LANGUAGE GUIDELINES:
   }
 
   /**
-   * Generate Dr. Astra response using official Google GenAI SDK with safe fallbacks and timeouts
+   * Generate Dr. Astra response using official Google GenAI SDK with safe fallbacks and timeouts.
+   * Employs clean timer management and safe abandonment to prevent hung asynchronous tasks.
    */
-  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 8000): Promise<ChatSuccessResponse> {
+  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 7000): Promise<ChatSuccessResponse> {
     const { message, learningProfile, campaign, currentObjective, simulationContext } = payload;
     const systemPrompt = this.buildSystemInstruction(learningProfile, campaign);
 
@@ -125,8 +126,11 @@ Student's Question: "${message}"
 
 Respond directly to the student as Dr. Astra following your age-appropriate tone and rules. Keep the response under 120 words.`;
 
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    let isAbandoned = false;
+
     try {
-      // Enforce upstream request timeout
+      // 1. Initiate GenAI call
       const generatePromise = this.aiClient.models.generateContent({
         model: this.config.geminiModel,
         contents: contextTelemetryPrompt,
@@ -137,13 +141,23 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         },
       });
 
+      // 2. Set timeout race with safe abandonment tracking
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('GEMINI_UPSTREAM_TIMEOUT')), timeoutMs);
+        timerId = setTimeout(() => {
+          isAbandoned = true;
+          reject(new Error('GEMINI_UPSTREAM_TIMEOUT'));
+        }, timeoutMs);
       });
 
       const response = await Promise.race([generatePromise, timeoutPromise]);
-      const responseText = response.text || '';
       
+      // Clean up timer on successful resolution
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+
+      const responseText = response.text || '';
       const sanitizedText = this.sanitizeAiResponse(responseText, payload);
 
       return {
@@ -154,11 +168,17 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         isFallback: false,
       };
     } catch (err: unknown) {
+      // Clean up timer on error
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg === 'GEMINI_UPSTREAM_TIMEOUT') {
-        console.warn('DrAstraService: Upstream Gemini call timed out. Serving safe educational fallback.');
+      if (errMsg === 'GEMINI_UPSTREAM_TIMEOUT' || isAbandoned) {
+        console.warn('DrAstraService: Upstream Gemini call timed out / safely abandoned. Serving deterministic educational fallback.');
       } else {
-        console.warn('DrAstraService: Gemini API call failed. Serving safe educational fallback.');
+        console.warn('DrAstraService: Gemini API call failed. Serving deterministic educational fallback.');
       }
       return this.generateDeterministicFallback(payload);
     }
@@ -186,17 +206,17 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       if (learningProfile === 'junior') {
         advice = `Our big solar panels catch sunlight! When it's dark night on the Moon, we rely on batteries. Turn off extra machines to save power! ⚡`;
       } else if (learningProfile === 'cadet') {
-        advice = `A lunar night lasts 14 Earth days (336 hours in non-polar zones). Ensure battery reserves exceed 500 kWh before sunset and toggle non-critical systems to power-rationing mode.`;
+        advice = `A lunar night lasts 14 Earth days (336 hours in non-polar zones, compared to the ~14.75 day / 354 hr astronomical synodic half-period). Ensure battery reserves exceed 500 kWh before sunset and toggle non-critical systems to power-rationing mode.`;
       } else {
-        advice = `Cryogenic night insolation is 0 W/m² for 336 hours. Base life support requires 35.2 kWh/day minimum. Shed the 6.0 kWh/day greenhouse auxiliary load to prevent deep-cycle battery depletion.`;
+        advice = `In this simulation, lunar night is simplified to 14 Earth days (336 hours, vs ~14.75-day / 354-hour astronomical synodic non-polar darkness). Cryogenic night insolation is 0 W/m². Base life support requires 35.2 kWh/day minimum. Shed the 6.0 kWh/day greenhouse auxiliary load to prevent deep-cycle battery depletion.`;
       }
     } else if (lower.includes('radiation') || lower.includes('storm') || lower.includes('shield')) {
       if (learningProfile === 'junior') {
         advice = `Cosmic rays are invisible space particles! We pile thick moon dirt on top of our habitat to keep our astronaut crew safe inside! 🛡️`;
       } else if (learningProfile === 'cadet') {
-        advice = `Galactic cosmic rays and solar flares deliver ionizing radiation. Artemis I measured deep-space GCR doses of 0.96-1.24 mSv/day inside Orion; our simulation uses 1.00 mSv/day as an educational baseline. Regolith shielding safely blocks high-energy ions!`;
+        advice = `Galactic cosmic rays and solar flares deliver ionizing radiation. Artemis I measured deep-space GCR doses of 0.96-1.24 mSv/day inside Orion during cis-lunar transit; our lunar outpost simulation uses 1.00 mSv/day unshielded as an educational game assumption. Regolith shielding safely blocks high-energy ions!`;
       } else {
-        advice = `Radiation note: NASA Artemis I Orion measured 0.96-1.24 mSv/day in deep space transit; our lunar outpost uses 1.00 mSv/day unshielded as an assumed scenario. Passive regolith mass attenuation reduces dose equivalent towards terrestrial occupational limits.`;
+        advice = `Radiation reference: NASA Artemis I Orion measured 0.96-1.24 mSv/day inside the capsule during cis-lunar transit; our lunar surface outpost models unshielded radiation as an assumed 1.00 mSv/day scenario (with the lunar body providing a 2-pi planetary shadow). Passive regolith mass attenuation reduces dose equivalent towards terrestrial occupational limits.`;
       }
     } else {
       if (learningProfile === 'junior') {

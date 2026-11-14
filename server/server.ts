@@ -137,12 +137,21 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
     }
   });
 
-  // Error handling middleware (e.g. CORS or JSON parse errors)
+  // Error handling middleware (e.g. CORS, payload size limit, or JSON parse errors)
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     if (err.message && err.message.includes('CORS')) {
       return res.status(403).json({
         success: false,
         error: 'Cross-Origin Request Blocked by security policy.',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    // Handle body-parser 413 Payload Too Large
+    if ('type' in err && (err as { type: string }).type === 'entity.too.large') {
+      return res.status(413).json({
+        success: false,
+        error: 'Payload size exceeds the 16kb limit.',
         code: 'VALIDATION_ERROR',
       });
     }

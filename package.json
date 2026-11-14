@@ -10,8 +10,14 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck:frontend": "tsc --noEmit",
+    "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
+    "typecheck:all": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "server": "node dist-server/index.js",
     "server:dev": "tsx server/index.ts"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@google/genai": "^3.3.0",

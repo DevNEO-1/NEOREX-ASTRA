@@ -74,8 +74,12 @@ export function validateChatRequest(body: unknown): ValidationResult {
   }
 
   const ctx = simulationContext as Record<string, unknown>;
-  if (typeof ctx.day !== 'number' || typeof ctx.totalDays !== 'number' || typeof ctx.isDaylight !== 'boolean') {
-    return { isValid: false, error: 'simulationContext missing day, totalDays, or isDaylight.' };
+  if (
+    typeof ctx.day !== 'number' || !Number.isFinite(ctx.day) ||
+    typeof ctx.totalDays !== 'number' || !Number.isFinite(ctx.totalDays) ||
+    typeof ctx.isDaylight !== 'boolean'
+  ) {
+    return { isValid: false, error: 'simulationContext missing or invalid day, totalDays, or isDaylight.' };
   }
 
   const res = ctx.resources as Record<string, unknown> | undefined;
@@ -85,9 +89,24 @@ export function validateChatRequest(body: unknown): ValidationResult {
 
   const numFields = ['oxygenKg', 'waterLitres', 'foodKg', 'batteryKwh', 'batteryCapacityKwh', 'credits'];
   for (const field of numFields) {
-    if (typeof res[field] !== 'number' || isNaN(res[field] as number)) {
+    const val = res[field];
+    if (typeof val !== 'number' || !Number.isFinite(val)) {
       return { isValid: false, error: `Invalid numeric resource value for ${field}.` };
     }
+  }
+
+  // Optional contextual numbers check (ensure finite if provided)
+  if (ctx.shieldingPercentage !== undefined && (typeof ctx.shieldingPercentage !== 'number' || !Number.isFinite(ctx.shieldingPercentage))) {
+    return { isValid: false, error: 'Invalid numeric value for shieldingPercentage.' };
+  }
+  if (ctx.waterRecyclingEfficiency !== undefined && (typeof ctx.waterRecyclingEfficiency !== 'number' || !Number.isFinite(ctx.waterRecyclingEfficiency))) {
+    return { isValid: false, error: 'Invalid numeric value for waterRecyclingEfficiency.' };
+  }
+  if (ctx.avgCrewHealth !== undefined && (typeof ctx.avgCrewHealth !== 'number' || !Number.isFinite(ctx.avgCrewHealth))) {
+    return { isValid: false, error: 'Invalid numeric value for avgCrewHealth.' };
+  }
+  if (ctx.activeWarningsCount !== undefined && (typeof ctx.activeWarningsCount !== 'number' || !Number.isFinite(ctx.activeWarningsCount))) {
+    return { isValid: false, error: 'Invalid numeric value for activeWarningsCount.' };
   }
 
   const sanitizedContext: ReadOnlySimulationContext = {

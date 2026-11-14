@@ -126,6 +126,35 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
       expect(res.body.success).toBe(false);
       expect(res.body.code).toBe('VALIDATION_ERROR');
     });
+
+    it('rejects non-finite resource values (NaN, Infinity, -Infinity)', async () => {
+      const app = createServer(mockConfig);
+
+      // JSON does not natively serialize NaN/Infinity unless transformed, but test stringified or explicit non-finite numbers
+      const nonFinitePayload = JSON.parse(JSON.stringify(sampleValidPayload));
+      nonFinitePayload.simulationContext.resources.batteryKwh = null; // null is not number
+
+      const res = await request(app)
+        .post('/api/dr-astra/chat')
+        .send(nonFinitePayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error).toContain('Invalid numeric resource value for batteryKwh');
+    });
+
+    it('rejects payloads exceeding the 16kb body size limit', async () => {
+      const app = createServer(mockConfig);
+      const hugeString = 'X'.repeat(20 * 1024); // 20KB
+
+      const res = await request(app)
+        .post('/api/dr-astra/chat')
+        .send({ ...sampleValidPayload, hugeBlob: hugeString });
+
+      // Express body parser throws 413 Payload Too Large
+      expect(res.status).toBe(413);
+    });
   });
 
   describe('CORS and Production Origin Protection', () => {
@@ -196,9 +225,26 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.ageTier).toBe('commander');
-      // Verifies distinction: Artemis I Orion measured 0.96-1.24 mSv/day in transit; surface uses assumed 1.00 mSv/day scenario
-      expect(res.body.response).toContain('Artemis I Orion measured 0.96-1.24 mSv/day in deep space transit');
-      expect(res.body.response).toContain('assumed scenario');
+      // Verifies distinction: Artemis I Orion measured 0.96-1.24 mSv/day inside capsule during transit; surface uses assumed 1.00 mSv/day scenario
+      expect(res.body.response).toContain('Artemis I Orion measured 0.96-1.24 mSv/day');
+      expect(res.body.response).toContain('inside the capsule during cis-lunar transit');
+      expect(res.body.response).toContain('assumed 1.00 mSv/day scenario');
+    });
+
+    it('clarifies lunar night duration distinction between 14-day simulation and ~14.75-day synodic half-period', async () => {
+      const app = createServer(mockConfig);
+      const res = await request(app)
+        .post('/api/dr-astra/chat')
+        .send({
+          ...sampleValidPayload,
+          message: 'How long is the lunar night?',
+          learningProfile: 'commander',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.response).toContain('14 Earth days (336 hours');
+      expect(res.body.response).toContain('14.75-day / 354-hour astronomical synodic');
     });
 
     it('distinguishes ISS 98% water recovery from initial lunar baseline recycling', async () => {
@@ -226,7 +272,7 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
       expect(safeText).toContain('battery reserves');
     });
 
-    it('handles simulated Gemini upstream timeouts gracefully by providing fallback', async () => {
+    it('handles simulated Gemini upstream timeouts gracefully by providing fallback and clearing timers', async () => {
       // Mock generateContent hanging forever
       const mockHangingClient = {
         models: {
