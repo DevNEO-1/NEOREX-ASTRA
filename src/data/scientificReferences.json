@@ -1,0 +1,62 @@
+[
+  {
+    "id": "nasa-bvad-eclss",
+    "title": "Baseline Values and Assumptions Document (BVAD) for Spaceflight Life Support",
+    "authorOrMission": "NASA Johnson Space Center (NASA/TP-2015-218570)",
+    "sourceUrl": "https://ntrs.nasa.gov/citations/20150003058",
+    "category": "Life Support",
+    "measuredFact": "A standard human astronaut consumes approximately 0.84 kg of O2 per day, produces 1.00 kg of CO2, requires 2.5–3.5 litres of hydration water, and consumes roughly 0.62–1.5 kg dry food biomass per day.",
+    "gameAssumption": "The 4-person outpost baseline is set to 3.2 kg O2/day (0.8 kg/person), 12 L water/day (3 L/person), and 6 kg food/day (1.5 kg/person).",
+    "simplificationRationale": "Rounds numbers to clean decimals for junior astronaut cognitive load while preserving exact closed-loop ratios."
+  },
+  {
+    "id": "iss-oxygen-generation",
+    "title": "Oxygen Generation System (OGS) on the International Space Station",
+    "authorOrMission": "NASA Marshall Space Flight Center & ISS ECLSS Office",
+    "sourceUrl": "https://www.nasa.gov/international-space-station/space-station-research-and-technology/life-support-systems/",
+    "category": "Life Support",
+    "measuredFact": "Water electrolysis converts deionized water into oxygen and hydrogen via 2 H2O -> 2 H2 + O2. Generating 1 kg of O2 requires ~1.125 kg of water and approximately 4–6 kWh of electrical energy per kg O2.",
+    "gameAssumption": "Generating 3.2 kg of O2 requires 3.6 L of water and 19.2 kWh of electricity (6.0 kWh/kg).",
+    "simplificationRationale": "Faithfully captures the direct stoichiometric linkage: without water and electricity, oxygen generation is impossible."
+  },
+  {
+    "id": "iss-water-recovery",
+    "title": "Exploration Environmental Control and Life Support System (ECLSS) Water Recovery",
+    "authorOrMission": "NASA ISS Program (ECLSS Water Processing Assembly)",
+    "sourceUrl": "https://www.nasa.gov/general/space-station-water-recycling-system-achieves-98-water-recovery/",
+    "category": "Life Support",
+    "measuredFact": "Modern ISS distillation and reverse osmosis assemblies recover 93% to 98% of astronaut urine, perspiration, and cabin moisture.",
+    "gameAssumption": "Artemis Base Alpha starts with an 80% recovery rate, upgradeable through engineering modules to 90% and 99%.",
+    "simplificationRationale": "Allows students to experience the critical difference between low recovery (fast depletion) and closed-loop mastery."
+  },
+  {
+    "id": "lunar-synodic-cycle",
+    "title": "Lunar Reconnaissance Orbiter (LRO) Diviner Lunar Radiometer Experiment",
+    "authorOrMission": "NASA Goddard Space Flight Center / UCLA",
+    "sourceUrl": "https://www.lpi.usra.edu/lunar/missions/lro/",
+    "category": "Lunar Environment",
+    "measuredFact": "The Moon has a synodic day of ~29.5 Earth days. Except for specific peaks of eternal light at lunar poles, a typical surface site experiences ~14 Earth days of continuous sunlight followed by ~14 Earth days of continuous darkness, with temperatures plunging below -130°C.",
+    "gameAssumption": "A 30-day lunar expedition is structured with daylight on Days 1–14, lunar night on Days 15–28, and dawn returning on Days 29–30.",
+    "simplificationRationale": "Directly confronts students with the profound energy storage challenge of surviving the lunar night using batteries."
+  },
+  {
+    "id": "nasa-artemis-radiation-safety",
+    "title": "Space Radiation Cancer Risk Projections and Permissible Exposure Limits",
+    "authorOrMission": "NASA Human Research Program (NASA SP-2016-3705)",
+    "sourceUrl": "https://www.nasa.gov/directorates/esdmd/hhp/space-radiation/",
+    "category": "Radiation",
+    "measuredFact": "Lunar surface Galactic Cosmic Ray (GCR) background is approximately 0.5–1.2 mSv/day. A severe Solar Particle Event (SPE) can deliver over 200–500 mSv within hours if unshielded. Regolith regolith overburden of 1–2 meters provides substantial attenuation.",
+    "gameAssumption": "Nominal background dose is 1.0 mSv/day. Solar storms spike to +15 to +35 mSv. Base hull gives 30% shielding, and sintered regolith shelters boost shielding to 50–90%.",
+    "simplificationRationale": "Accurately conveys biological vulnerability to radiation without bogging students down in heavy particle transport physics."
+  },
+  {
+    "id": "nasa-mars-dra5",
+    "title": "Human Exploration of Mars Design Reference Architecture 5.0",
+    "authorOrMission": "NASA Mars Exploration Program (NASA/SP-2009-566)",
+    "sourceUrl": "https://ntrs.nasa.gov/citations/20090012109",
+    "category": "Mars ECLSS",
+    "measuredFact": "Mars is situated at ~1.52 AU from the Sun, resulting in solar irradiance of ~590 W/m2 compared to Earth/Moon's ~1361 W/m2 (approximately 43%). Atmospheric dust storms further attenuate solar energy by up to 80%.",
+    "gameAssumption": "Mars campaign solar generation yields 32 kWh/sol (compared to 45 kWh/day on the Moon), with higher baseline heating demand.",
+    "simplificationRationale": "Teaches students how planetary distance and atmospheric dust alter space engineering trade-offs."
+  }
+]
