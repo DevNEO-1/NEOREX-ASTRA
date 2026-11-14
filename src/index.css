@@ -1,0 +1,93 @@
+/* NEOREX ASTRA — GLOBAL BASE STYLES */
+:root {
+  /* Futuristic Space Command Center Palette */
+  --bg-primary: #050b18;
+  --bg-secondary: #0b1425;
+  --bg-card: #101d30;
+  --bg-card-glass: rgba(16, 29, 48, 0.82);
+  --cyan-primary: #29d9f2;
+  --electric-blue: #398bff;
+  --purple-accent: #8865ff;
+  --text-white: #f4f8ff;
+  --text-secondary: #91a8c5;
+  --text-muted: #627b99;
+  --border-neon: 1px solid rgba(41, 217, 242, 0.22);
+  --border-subtle: 1px solid rgba(57, 139, 255, 0.15);
+  --neon-glow: 0 0 16px rgba(41, 217, 242, 0.35);
+
+  /* Canonical Aliases */
+  --bg: #050b18;
+  --text: #f4f8ff;
+  --text-h: #f4f8ff;
+  --accent: #29d9f2;
+  --accent-bg: rgba(41, 217, 242, 0.12);
+  --accent-border: rgba(41, 217, 242, 0.4);
+
+  --sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
+  font-family: var(--sans);
+  letter-spacing: 0.15px;
+  color-scheme: dark;
+  color: var(--text-white);
+  background-color: var(--bg-primary);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-white);
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--sans);
+  color: var(--text-white);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+code,
+pre {
+  font-family: var(--mono);
+}
+
+@media (max-width: 1024px) {
+  :root {
+    font-size: 15px;
+  }
+}
