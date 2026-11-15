@@ -151,14 +151,37 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
     let isAbandoned = false;
 
     try {
-      // 1. Initiate Gemini call with client abortSignal: prefer Interactions API if available, fallback to models.generateContent
+      // 1. Initiate Gemini call with client abortSignal: try models.generateContent with gemini-3.8-flash, with interactions.create resilience
       const generatePromise = (async (): Promise<string> => {
         if (!this.aiClient) return '';
 
         let responseText = '';
 
-        // If client supports Interactions API (recommended for gemini-3.8-flash)
-        if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
+        // Primary: High-speed models.generateContent with thinkingBudget: 0
+        if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
+          try {
+            const response = await (this.aiClient as any).models.generateContent({
+              model: this.config.geminiModel,
+              contents: contextTelemetryPrompt,
+              config: {
+                systemInstruction: systemPrompt,
+                temperature: 0.7,
+                maxOutputTokens: 256,
+                thinkingConfig: {
+                  thinkingBudget: 0,
+                },
+                abortSignal: abortController.signal,
+              },
+            });
+            responseText = response?.text || '';
+            if (responseText) return responseText;
+          } catch (modelErr: unknown) {
+            console.warn('DrAstraService: models.generateContent caught error, attempting interactions.create:', modelErr instanceof Error ? modelErr.message : String(modelErr));
+          }
+        }
+
+        // Secondary: Interactions API
+        if (!responseText && 'interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
           try {
             const interaction = await (this.aiClient as any).interactions.create({
               model: this.config.geminiModel,
@@ -195,26 +218,8 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               }
             }
           } catch (interactionErr: unknown) {
-            console.warn('DrAstraService: Interactions API call caught error, trying models.generateContent:', interactionErr instanceof Error ? interactionErr.message : String(interactionErr));
+            console.warn('DrAstraService: Interactions API call caught error:', interactionErr instanceof Error ? interactionErr.message : String(interactionErr));
           }
-        }
-
-        // If response is still empty and models.generateContent is available, fallback to models.generateContent
-        if (!responseText && 'models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
-          const response = await (this.aiClient as any).models.generateContent({
-            model: this.config.geminiModel,
-            contents: contextTelemetryPrompt,
-            config: {
-              systemInstruction: systemPrompt,
-              temperature: 0.7,
-              maxOutputTokens: 256,
-              thinkingConfig: {
-                thinkingBudget: 0,
-              },
-              abortSignal: abortController.signal,
-            },
-          });
-          responseText = response?.text || '';
         }
 
         return responseText;
