@@ -158,7 +158,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         let responseText = '';
         let lastError: unknown = null;
 
-        // Primary: High-speed models.generateContent with thinkingBudget: 0
+        // Primary: High-speed models.generateContent
         if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
           try {
             const response = await (this.aiClient as any).models.generateContent({
@@ -168,9 +168,6 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 systemInstruction: systemPrompt,
                 temperature: 0.7,
                 maxOutputTokens: 256,
-                thinkingConfig: {
-                  thinkingBudget: 0,
-                },
                 abortSignal: abortController.signal,
               },
             });
@@ -182,7 +179,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
           }
         }
 
-        // Secondary: Interactions API
+        // Secondary: Interactions API with thinking_level: 'low'
         if (!responseText && 'interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
           try {
             const interaction = await (this.aiClient as any).interactions.create({
@@ -192,7 +189,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               generation_config: {
                 temperature: 0.7,
                 max_output_tokens: 256,
-                thinking_level: 'minimal',
+                thinking_level: 'low',
               },
               automatic_continuation: false,
               store: false,
