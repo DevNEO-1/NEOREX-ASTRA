@@ -1,4 +1,4 @@
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { ChatRequestPayload, ChatSuccessResponse, LearningProfileTier } from './types.js';
 import { ServerConfig } from './config.js';
 import { reviewAiResponseSafety } from './safetyReviewer.js';
@@ -29,6 +29,41 @@ export class DrAstraService {
 
   public getLastUpstreamDiagnosis(): SafeUpstreamDiagnosis | null {
     return this.lastUpstreamDiagnosis;
+  }
+
+  private recordUpstreamDiagnosis(err: unknown): void {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const errName = err instanceof Error ? (err.name || err.constructor.name) : 'UnknownError';
+    const errStatus = typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : undefined;
+
+    // Sanitize potential credentials/tokens from error string
+    const sanitizedError = errMsg
+      .replace(/AIza[0-9A-Za-z-_]{35}/g, '[REDACTED_API_KEY]')
+      .replace(/key=[^&\s]+/g, 'key=[REDACTED]');
+
+    let googleErrorCode: string | number | undefined = undefined;
+    let googleErrorStatus: string | undefined = undefined;
+    try {
+      const parsed = JSON.parse(errMsg);
+      if (parsed?.error) {
+        if (parsed.error.code) googleErrorCode = parsed.error.code;
+        if (parsed.error.status) googleErrorStatus = parsed.error.status;
+        if (Array.isArray(parsed.error.details) && parsed.error.details[0]?.reason) {
+          googleErrorCode = parsed.error.details[0].reason;
+        }
+      }
+    } catch {
+      // Not JSON
+    }
+
+    this.lastUpstreamDiagnosis = {
+      errorName: errName,
+      httpStatus: typeof errStatus === 'number' ? errStatus : 500,
+      googleErrorCode,
+      googleErrorStatus,
+      sanitizedMessage: sanitizedError,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   /**
@@ -155,7 +190,9 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       const generatePromise = (async (): Promise<string> => {
         if (!this.aiClient) return '';
 
-        // Primary: High-speed models.generateContent with gemini-3.8-flash and ThinkingLevel.LOW
+        let firstError: unknown = null;
+
+        // Primary: High-speed models.generateContent with gemini-3.8-flash
         if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
           try {
             const response = await (this.aiClient as any).models.generateContent({
@@ -165,42 +202,51 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 systemInstruction: systemPrompt,
                 temperature: 0.7,
                 maxOutputTokens: 1024,
-                thinkingConfig: {
-                  thinkingLevel: ThinkingLevel.LOW,
-                },
                 abortSignal: abortController.signal,
               },
             });
             const text = response?.text || '';
             if (text) return text;
           } catch (modelErr: unknown) {
+            firstError = modelErr;
+            this.recordUpstreamDiagnosis(modelErr);
             console.warn('DrAstraService: models.generateContent caught error, attempting interactions.create:', modelErr instanceof Error ? modelErr.message : String(modelErr));
           }
         }
 
         // Secondary: Interactions API fallback
         if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
-          const interaction = await (this.aiClient as any).interactions.create({
-            model: this.config.geminiModel,
-            input: contextTelemetryPrompt,
-            system_instruction: systemPrompt,
-            generation_config: {
-              temperature: 0.7,
-              max_output_tokens: 1024,
-              thinking_level: 'low',
-            },
-            automatic_continuation: false,
-            store: false,
-          }, {
-            fetch_options: {
-              signal: abortController.signal,
-            },
-            timeout_ms: timeoutMs,
-          });
+          try {
+            const interaction = await (this.aiClient as any).interactions.create({
+              model: this.config.geminiModel,
+              input: contextTelemetryPrompt,
+              system_instruction: systemPrompt,
+              generation_config: {
+                max_output_tokens: 1024,
+              },
+              automatic_continuation: false,
+              store: false,
+            }, {
+              fetch_options: {
+                signal: abortController.signal,
+              },
+              timeout_ms: 12000,
+            });
 
-          if (interaction?.output_text) {
-            return String(interaction.output_text);
+            if (interaction?.output_text) {
+              return String(interaction.output_text);
+            }
+          } catch (intErr: unknown) {
+            if (!firstError) {
+              firstError = intErr;
+              this.recordUpstreamDiagnosis(intErr);
+            }
+            console.warn('DrAstraService: interactions.create caught error:', intErr instanceof Error ? intErr.message : String(intErr));
           }
+        }
+
+        if (firstError) {
+          throw firstError;
         }
 
         return '';
@@ -266,43 +312,13 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         // Ignore
       }
 
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const errName = err instanceof Error ? (err.name || err.constructor.name) : 'UnknownError';
-      const errStatus = typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : undefined;
+      this.recordUpstreamDiagnosis(err);
+      const diag = this.lastUpstreamDiagnosis;
 
-      // Sanitize potential credentials/tokens from error string
-      const sanitizedError = errMsg
-        .replace(/AIza[0-9A-Za-z-_]{35}/g, '[REDACTED_API_KEY]')
-        .replace(/key=[^&\s]+/g, 'key=[REDACTED]');
-
-      let googleErrorCode: string | number | undefined = undefined;
-      let googleErrorStatus: string | undefined = undefined;
-      try {
-        const parsed = JSON.parse(errMsg);
-        if (parsed?.error) {
-          if (parsed.error.code) googleErrorCode = parsed.error.code;
-          if (parsed.error.status) googleErrorStatus = parsed.error.status;
-          if (Array.isArray(parsed.error.details) && parsed.error.details[0]?.reason) {
-            googleErrorCode = parsed.error.details[0].reason;
-          }
-        }
-      } catch {
-        // Not JSON
-      }
-
-      this.lastUpstreamDiagnosis = {
-        errorName: errName,
-        httpStatus: typeof errStatus === 'number' ? errStatus : 500,
-        googleErrorCode,
-        googleErrorStatus,
-        sanitizedMessage: sanitizedError,
-        timestamp: new Date().toISOString(),
-      };
-
-      if (errMsg === 'GEMINI_UPSTREAM_TIMEOUT' || isAbandoned) {
+      if (diag?.sanitizedMessage === 'GEMINI_UPSTREAM_TIMEOUT' || isAbandoned) {
         console.warn('DrAstraService: Upstream Gemini call timed out. Operation aborted and safely abandoned; serving educational fallback.');
       } else {
-        console.warn(`DrAstraService: Gemini API call failed [${errName}${errStatus ? ` status=${errStatus}` : ''}]: ${sanitizedError}. Serving deterministic educational fallback.`);
+        console.warn(`DrAstraService: Gemini API call failed [${diag?.errorName || 'Error'} status=${diag?.httpStatus}]: ${diag?.sanitizedMessage}. Serving deterministic educational fallback.`);
       }
       return this.generateDeterministicFallback(payload);
     }
