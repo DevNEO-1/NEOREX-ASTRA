@@ -776,6 +776,76 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
       expect(res.isFallback).toBe(true);
       expect(res.response).toBeDefined();
     });
+
+    it('primary model transient timeout triggers safe alternative-model attempt and succeeds', async () => {
+      const timeoutErr = new Error('Request timed out: TimeoutError: The operation was aborted due to timeout');
+      timeoutErr.name = 'APIConnectionTimeoutError';
+
+      const mockGenerateContent = vi.fn().mockImplementation((args: any) => {
+        if (args.model === 'gemini-3.8-flash') {
+          return Promise.reject(timeoutErr);
+        }
+        if (args.model === 'gemini-3.5-flash-lite') {
+          return Promise.resolve({
+            text: 'Alternative model response: Safe lunar night battery management advice.',
+          });
+        }
+        return Promise.reject(new Error(`Unexpected model: ${args.model}`));
+      });
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(false);
+      expect(res.response).toContain('Alternative model response');
+      // Primary model was attempted once, failed with timeout, then alternative model succeeded
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(1, expect.objectContaining({ model: 'gemini-3.8-flash' }));
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: 'gemini-3.5-flash-lite' }));
+    });
+
+    it('invalid API key (401/403) stops immediately without misleading retries or alternative-model calls', async () => {
+      const authError = new Error('API_KEY_INVALID: User API key not valid. Please pass a valid API key.');
+      (authError as any).status = 401;
+
+      const mockGenerateContent = vi.fn().mockRejectedValue(authError);
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(true);
+      expect(res.response).toBeDefined();
+
+      // Exactly 1 attempt on primary model; no retries and no alternative model
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.8-flash' }));
+
+      const diag = service.getLastUpstreamDiagnosis();
+      expect(diag).toBeDefined();
+      expect(diag?.httpStatus).toBe(401);
+      expect(diag?.retriesAttempted).toBe(0);
+      expect(diag?.modelAttempted).toBe('gemini-3.8-flash');
+    });
   });
 
   describe('Simulation State Immutability Protection', () => {

@@ -72,9 +72,14 @@ export class DrAstraService {
       errMsg.includes('high demand') ||
       errMsg.includes('overloaded');
 
+    const isTimeout = errName === 'APIConnectionTimeoutError' || 
+      errName === 'TimeoutError' || 
+      errMsg === 'GEMINI_UPSTREAM_TIMEOUT' ||
+      errMsg.includes('timed out');
+
     const httpStatus = typeof errStatus === 'number' 
       ? errStatus 
-      : (isQuotaExhausted ? 429 : (is503 ? 503 : (errMsg === 'GEMINI_UPSTREAM_TIMEOUT' ? 504 : 500)));
+      : (isQuotaExhausted ? 429 : (is503 ? 503 : (isTimeout ? 504 : 500)));
 
     // Preserve previously recorded retries/model if caller did not supply them
     const finalRetries = typeof retriesAttempted === 'number'
@@ -239,6 +244,10 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         });
       };
 
+      const startTime = Date.now();
+      const isTest = this.config.nodeEnv === 'test';
+      const getRemainingMs = () => Math.max(0, timeoutMs - (Date.now() - startTime));
+
       // 1. Initiate Gemini call with client abortSignal
       const generatePromise = (async (): Promise<string> => {
         if (!this.config.geminiApiKey && !this.aiClient) return '';
@@ -259,6 +268,21 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                  msg.includes('overloaded');
         };
 
+        const isTransientTimeoutOrConnection = (err: unknown): boolean => {
+          if (!err) return false;
+          const errName = err instanceof Error ? err.name : (err as any)?.constructor?.name || '';
+          const msg = err instanceof Error ? err.message : String(err);
+          return errName === 'APIConnectionTimeoutError' ||
+                 errName === 'TimeoutError' ||
+                 msg.includes('APIConnectionTimeoutError') ||
+                 msg.includes('timed out') ||
+                 msg.includes('TimeoutError') ||
+                 msg.includes('ECONNRESET') ||
+                 msg.includes('ETIMEDOUT') ||
+                 msg.includes('ENOTFOUND') ||
+                 msg.includes('fetch failed');
+        };
+
         const isQuota429 = (err: unknown): boolean => {
           if (!err) return false;
           const status = typeof (err as { status?: number })?.status === 'number' 
@@ -276,7 +300,25 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
 
         // Execution helper for a specific model across SDK Interactions, SDK Models, and direct REST
         // NOTE: Errors from all 3 paths are directly propagated to the retry controller (NOT swallowed).
-        const executeModelAttempt = async (targetModel: string): Promise<string> => {
+        const isAuthOrClient4xx = (err: unknown): boolean => {
+          if (!err) return false;
+          if (isQuota429(err)) return false;
+          const status = typeof (err as { status?: number })?.status === 'number' 
+            ? (err as { status: number }).status 
+            : (typeof (err as { statusCode?: number })?.statusCode === 'number'
+               ? (err as { statusCode: number }).statusCode
+               : undefined);
+          if (status && status >= 400 && status < 500) return true;
+          const msg = err instanceof Error ? err.message : String(err);
+          return msg.includes('API_KEY_INVALID') ||
+                 msg.includes('UNAUTHENTICATED') ||
+                 msg.includes('PERMISSION_DENIED') ||
+                 msg.includes('401') ||
+                 msg.includes('403') ||
+                 msg.includes('404');
+        };
+
+        const executeModelAttempt = async (targetModel: string, attemptTimeoutMs?: number): Promise<string> => {
           if (abortController.signal.aborted) {
             throw new Error('GEMINI_UPSTREAM_TIMEOUT');
           }
@@ -287,9 +329,10 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               const int = await (this.aiClient as any).interactions.create({
                 model: targetModel,
                 input: `${systemPrompt}\n\n${contextTelemetryPrompt}`,
+                store: false,
               }, {
-                timeout: 8000,
-                abortSignal: abortController.signal,
+                timeout: attemptTimeoutMs,
+                signal: abortController.signal,
               });
               const outputText = int?.output_text || 
                 (Array.isArray(int?.steps) && int.steps[int.steps.length - 1]?.content?.[0]?.text) || '';
@@ -383,8 +426,9 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           if (abortController.signal.aborted) break;
           attemptsUsed = attempt + 1;
+          const remainingForPrimary = isTest ? timeoutMs : Math.min(14000, Math.max(3000, getRemainingMs() - 8000));
           try {
-            const text = await executeModelAttempt(primaryModel);
+            const text = await executeModelAttempt(primaryModel, remainingForPrimary);
             if (text) return text;
           } catch (err: unknown) {
             lastError = err;
@@ -396,19 +440,17 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
             }
 
             // Client 4xx errors (400, 401, 403, 404) -> DO NOT RETRY.
-            const status = typeof (err as { status?: number })?.status === 'number' 
-              ? (err as { status: number }).status 
-              : undefined;
-            if (status && status >= 400 && status < 500) {
+            if (isAuthOrClient4xx(err)) {
               this.recordUpstreamDiagnosis(err, primaryModel, attempt);
               throw err;
             }
 
-            // Only retry if transient 503 error AND attempts remain
-            if (isTransient503(err) && attempt < maxRetries && !abortController.signal.aborted) {
-              const baseDelay = this.config.nodeEnv === 'test' ? 10 : 800;
+            // Only retry if transient 503 error AND attempts remain AND sufficient time remains
+            const minTimeForRetry = isTest ? 10 : 16000;
+            if (isTransient503(err) && attempt < maxRetries && !abortController.signal.aborted && getRemainingMs() >= minTimeForRetry) {
+              const baseDelay = this.config.nodeEnv === 'test' ? 5 : 800;
               const jitter = this.config.nodeEnv === 'test' ? 0 : Math.random() * 300;
-              const delayMs = Math.min(2500, Math.pow(2, attempt) * baseDelay + jitter);
+              const delayMs = Math.min(2000, Math.pow(2, attempt) * baseDelay + jitter);
               await sleepWithAbort(delayMs, abortController.signal);
               if (abortController.signal.aborted) break;
               continue;
@@ -419,16 +461,20 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
           }
         }
 
-        // Alternative model is attempted ONLY after confirmed primary-model 503 exhaustion (all attempts used)
+        // Alternative model is attempted for eligible transient failures (503 exhaustion OR transient timeout/connection) when sufficient time remains
         const fallbackModel = this.config.geminiFallbackModel;
+        const minTimeForFallback = isTest ? 10 : 5000;
+        const isEligibleTransient = isTransient503(lastError) || isTransientTimeoutOrConnection(lastError);
+
         if (!abortController.signal.aborted && 
-            isTransient503(lastError) && 
-            attemptsUsed >= (maxRetries + 1) && 
+            isEligibleTransient && 
             fallbackModel && 
-            fallbackModel !== primaryModel) {
+            fallbackModel !== primaryModel &&
+            getRemainingMs() >= minTimeForFallback) {
           try {
-            console.warn(`[DrAstraService] Primary model ${primaryModel} exhausted after ${attemptsUsed} attempts with 503 UNAVAILABLE. Attempting fallback model ${fallbackModel}...`);
-            const fallbackText = await executeModelAttempt(fallbackModel);
+            console.warn(`[DrAstraService] Primary model ${primaryModel} failed after ${attemptsUsed} attempt(s) with transient error (${lastError instanceof Error ? lastError.name : 'TransientError'}). Attempting alternative model ${fallbackModel} (budget: ${getRemainingMs()}ms)...`);
+            const remainingForFallback = isTest ? timeoutMs : Math.max(3000, getRemainingMs() - 1500);
+            const fallbackText = await executeModelAttempt(fallbackModel, remainingForFallback);
             if (fallbackText) return fallbackText;
           } catch (fallbackErr: unknown) {
             this.recordUpstreamDiagnosis(fallbackErr, fallbackModel, 0);
