@@ -15,6 +15,7 @@ export interface SafeUpstreamDiagnosis {
 
 export class DrAstraService {
   private aiClient: GoogleGenAI | null = null;
+  private isMockClient: boolean = false;
   private config: ServerConfig;
   private lastUpstreamDiagnosis: SafeUpstreamDiagnosis | null = null;
 
@@ -22,6 +23,7 @@ export class DrAstraService {
     this.config = config;
     if (mockClient) {
       this.aiClient = mockClient;
+      this.isMockClient = true;
     } else if (config.geminiApiKey) {
       this.aiClient = new GoogleGenAI({ apiKey: config.geminiApiKey, apiVersion: 'v1beta' });
     }
@@ -188,74 +190,86 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
     try {
       // 1. Initiate Gemini call with client abortSignal
       const generatePromise = (async (): Promise<string> => {
-        if (!this.aiClient) return '';
+        if (!this.config.geminiApiKey && !this.aiClient) return '';
 
-        let firstError: unknown = null;
-
-        // 1. Primary: Interactions API (recommended by Google for gemini-3.8-flash)
-        if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
-          try {
-            const interaction = await (this.aiClient as any).interactions.create({
-              model: this.config.geminiModel,
-              input: contextTelemetryPrompt,
-              system_instruction: systemPrompt,
-              generation_config: {
-                max_output_tokens: 1024,
-              },
-              store: false,
-            }, {
-              retries: { strategy: 'none' },
-              timeout_ms: 12000,
-            });
-
-            let text = interaction?.output_text || '';
-            if (!text && Array.isArray((interaction as any)?.steps)) {
-              for (const step of (interaction as any).steps) {
-                if (Array.isArray(step?.content)) {
-                  for (const part of step.content) {
-                    if (typeof part?.text === 'string') {
-                      text += part.text;
-                    }
-                  }
-                }
-              }
-            }
-            if (text) return text;
-          } catch (intErr: unknown) {
-            firstError = intErr;
-            this.recordUpstreamDiagnosis(intErr);
-            console.warn('DrAstraService: interactions.create caught error, attempting models.generateContent fallback:', intErr instanceof Error ? intErr.message : String(intErr));
-          }
-        }
-
-        // 2. Secondary: models.generateContent fallback
-        if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
-          try {
-            const response = await (this.aiClient as any).models.generateContent({
+        // Case A: Mock AI client provided (unit test isolation)
+        if (this.isMockClient && this.aiClient) {
+          if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
+            const res = await (this.aiClient as any).models.generateContent({
               model: this.config.geminiModel,
               contents: contextTelemetryPrompt,
               config: {
                 systemInstruction: systemPrompt,
                 maxOutputTokens: 1024,
                 abortSignal: abortController.signal,
-                httpOptions: {
-                  timeout: 12000,
-                },
               },
             });
-            const text = response?.text || '';
-            if (text) return text;
-          } catch (modelErr: unknown) {
-            if (!firstError) {
-              firstError = modelErr;
-              this.recordUpstreamDiagnosis(modelErr);
-            }
-            console.warn('DrAstraService: models.generateContent error:', modelErr instanceof Error ? modelErr.message : String(modelErr));
+            return res?.text || '';
+          }
+          if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
+            const int = await (this.aiClient as any).interactions.create({
+              model: this.config.geminiModel,
+              input: contextTelemetryPrompt,
+            });
+            return int?.output_text || '';
           }
         }
 
-        if (firstError) {
-          throw firstError;
+        // Case B: Production Google Gemini API call via official REST endpoint
+        if (this.config.geminiApiKey) {
+          try {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.config.geminiModel)}:generateContent`;
+            const reqBody = {
+              systemInstruction: {
+                parts: [{ text: systemPrompt }],
+              },
+              contents: [
+                {
+                  role: 'user',
+                  parts: [{ text: contextTelemetryPrompt }],
+                },
+              ],
+              generationConfig: {
+                maxOutputTokens: 1024,
+                temperature: 0.7,
+              },
+            };
+
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': this.config.geminiApiKey,
+              },
+              body: JSON.stringify(reqBody),
+              signal: abortController.signal,
+            });
+
+            if (!response.ok) {
+              const errBody = await response.text();
+              let parsedError: any = null;
+              try {
+                parsedError = JSON.parse(errBody);
+              } catch {
+                parsedError = { error: { message: errBody, code: response.status } };
+              }
+              const restErr = new Error(JSON.stringify(parsedError));
+              (restErr as any).status = response.status;
+              this.recordUpstreamDiagnosis(restErr);
+              throw restErr;
+            }
+
+            const data = await response.json() as any;
+            const candidate = data?.candidates?.[0];
+            const parts = candidate?.content?.parts;
+            if (Array.isArray(parts)) {
+              const text = parts.map((p: any) => p?.text || '').join('');
+              if (text) return text;
+            }
+          } catch (restErr: unknown) {
+            this.recordUpstreamDiagnosis(restErr);
+            throw restErr;
+          }
         }
 
         return '';
