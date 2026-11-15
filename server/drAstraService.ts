@@ -192,29 +192,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
 
         let firstError: unknown = null;
 
-        // Primary: High-speed models.generateContent with gemini-3.8-flash
-        if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
-          try {
-            const response = await (this.aiClient as any).models.generateContent({
-              model: this.config.geminiModel,
-              contents: contextTelemetryPrompt,
-              config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.7,
-                maxOutputTokens: 1024,
-                abortSignal: abortController.signal,
-              },
-            });
-            const text = response?.text || '';
-            if (text) return text;
-          } catch (modelErr: unknown) {
-            firstError = modelErr;
-            this.recordUpstreamDiagnosis(modelErr);
-            console.warn('DrAstraService: models.generateContent caught error, attempting interactions.create:', modelErr instanceof Error ? modelErr.message : String(modelErr));
-          }
-        }
-
-        // Secondary: Interactions API fallback
+        // 1. Primary: Interactions API (recommended by Google for gemini-3.8-flash)
         if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
           try {
             const interaction = await (this.aiClient as any).interactions.create({
@@ -224,24 +202,49 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               generation_config: {
                 max_output_tokens: 1024,
               },
-              automatic_continuation: false,
               store: false,
-            }, {
-              fetch_options: {
-                signal: abortController.signal,
-              },
-              timeout_ms: 12000,
             });
 
-            if (interaction?.output_text) {
-              return String(interaction.output_text);
+            let text = interaction?.output_text || '';
+            if (!text && Array.isArray((interaction as any)?.steps)) {
+              for (const step of (interaction as any).steps) {
+                if (Array.isArray(step?.content)) {
+                  for (const part of step.content) {
+                    if (typeof part?.text === 'string') {
+                      text += part.text;
+                    }
+                  }
+                }
+              }
             }
+            if (text) return text;
           } catch (intErr: unknown) {
+            firstError = intErr;
+            this.recordUpstreamDiagnosis(intErr);
+            console.warn('DrAstraService: interactions.create caught error, attempting models.generateContent fallback:', intErr instanceof Error ? intErr.message : String(intErr));
+          }
+        }
+
+        // 2. Secondary: models.generateContent fallback
+        if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
+          try {
+            const response = await (this.aiClient as any).models.generateContent({
+              model: this.config.geminiModel,
+              contents: contextTelemetryPrompt,
+              config: {
+                systemInstruction: systemPrompt,
+                maxOutputTokens: 1024,
+                abortSignal: abortController.signal,
+              },
+            });
+            const text = response?.text || '';
+            if (text) return text;
+          } catch (modelErr: unknown) {
             if (!firstError) {
-              firstError = intErr;
-              this.recordUpstreamDiagnosis(intErr);
+              firstError = modelErr;
+              this.recordUpstreamDiagnosis(modelErr);
             }
-            console.warn('DrAstraService: interactions.create caught error:', intErr instanceof Error ? intErr.message : String(intErr));
+            console.warn('DrAstraService: models.generateContent error:', modelErr instanceof Error ? modelErr.message : String(modelErr));
           }
         }
 
