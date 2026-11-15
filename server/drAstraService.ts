@@ -11,6 +11,9 @@ export interface SafeUpstreamDiagnosis {
   googleErrorStatus?: string;
   sanitizedMessage: string;
   timestamp: string;
+  retriesAttempted?: number;
+  modelAttempted?: string;
+  isQuotaExhausted?: boolean;
 }
 
 export class DrAstraService {
@@ -33,7 +36,7 @@ export class DrAstraService {
     return this.lastUpstreamDiagnosis;
   }
 
-  private recordUpstreamDiagnosis(err: unknown): void {
+  private recordUpstreamDiagnosis(err: unknown, modelAttempted?: string, retriesAttempted?: number): void {
     const errMsg = err instanceof Error ? err.message : String(err);
     const errName = err instanceof Error ? (err.name || err.constructor.name) : 'UnknownError';
     const errStatus = typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : undefined;
@@ -58,13 +61,22 @@ export class DrAstraService {
       // Not JSON
     }
 
+    const isQuotaExhausted = errStatus === 429 || 
+      googleErrorStatus === 'RESOURCE_EXHAUSTED' || 
+      errMsg.includes('429') || 
+      errMsg.includes('RESOURCE_EXHAUSTED') || 
+      errMsg.includes('quota');
+
     this.lastUpstreamDiagnosis = {
       errorName: errName,
-      httpStatus: typeof errStatus === 'number' ? errStatus : 500,
+      httpStatus: typeof errStatus === 'number' ? errStatus : (isQuotaExhausted ? 429 : 500),
       googleErrorCode,
       googleErrorStatus,
       sanitizedMessage: sanitizedError,
       timestamp: new Date().toISOString(),
+      retriesAttempted,
+      modelAttempted: modelAttempted || this.config.geminiModel,
+      isQuotaExhausted,
     };
   }
 
@@ -215,30 +227,48 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
           }
         }
 
-        // Case B: Production Google Gemini SDK call
-        if (this.aiClient) {
-          // 1. Try Interactions API first (recommended for gemini-3.8-flash)
-          if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
+        // Case B: Production Google Gemini API with bounded retries and model fallback
+        const isTransient503 = (err: unknown): boolean => {
+          if (!err) return false;
+          const status = typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : undefined;
+          if (status === 503) return true;
+          const msg = err instanceof Error ? err.message : String(err);
+          return msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand') || msg.includes('temporarily unavailable');
+        };
+
+        const isQuota429 = (err: unknown): boolean => {
+          if (!err) return false;
+          const status = typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : undefined;
+          if (status === 429) return true;
+          const msg = err instanceof Error ? err.message : String(err);
+          return msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+        };
+
+        // Execution helper for a specific model across SDK Interactions, SDK Models, and direct REST
+        const executeModelAttempt = async (targetModel: string): Promise<string> => {
+          // 1. Try Interactions API via SDK (recommended by Google)
+          if (this.aiClient && 'interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
             try {
               const int = await (this.aiClient as any).interactions.create({
-                model: this.config.geminiModel,
+                model: targetModel,
                 input: `${systemPrompt}\n\n${contextTelemetryPrompt}`,
               }, {
-                timeout: 14000,
+                timeout: 8000,
               });
               const outputText = int?.output_text || 
                 (Array.isArray(int?.steps) && int.steps[int.steps.length - 1]?.content?.[0]?.text) || '';
               if (outputText) return outputText;
             } catch (intErr: unknown) {
-              this.recordUpstreamDiagnosis(intErr);
+              if (isQuota429(intErr)) throw intErr;
+              // If not quota, continue to models.generateContent
             }
           }
 
           // 2. Try models.generateContent via SDK
-          if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
+          if (this.aiClient && 'models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
             try {
               const res = await (this.aiClient as any).models.generateContent({
-                model: this.config.geminiModel,
+                model: targetModel,
                 contents: contextTelemetryPrompt,
                 config: {
                   systemInstruction: systemPrompt,
@@ -249,16 +279,14 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               const text = res?.text || '';
               if (text) return text;
             } catch (modelErr: unknown) {
-              this.recordUpstreamDiagnosis(modelErr);
-              throw modelErr;
+              if (isQuota429(modelErr)) throw modelErr;
+              // Continue to direct REST
             }
           }
-        }
 
-        // Case C: Fallback to direct REST if SDK methods unavailable
-        if (this.config.geminiApiKey) {
-          try {
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.config.geminiModel)}:generateContent`;
+          // 3. Fallback to direct REST
+          if (this.config.geminiApiKey) {
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent`;
             const reqBody = {
               systemInstruction: {
                 parts: [{ text: systemPrompt }],
@@ -295,7 +323,6 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               }
               const restErr = new Error(JSON.stringify(parsedError));
               (restErr as any).status = response.status;
-              this.recordUpstreamDiagnosis(restErr);
               throw restErr;
             }
 
@@ -306,11 +333,70 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               const text = parts.map((p: any) => p?.text || '').join('');
               if (text) return text;
             }
-          } catch (restErr: unknown) {
-            this.recordUpstreamDiagnosis(restErr);
-            throw restErr;
+          }
+
+          return '';
+        };
+
+        // Bounded retries loop for primary model (max 2 retries on 503 only)
+        const primaryModel = this.config.geminiModel;
+        const maxRetries = 2;
+        let lastError: unknown;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          if (abortController.signal.aborted) break;
+          try {
+            const text = await executeModelAttempt(primaryModel);
+            if (text) return text;
+          } catch (err: unknown) {
+            lastError = err;
+
+            // 429: Quota exhausted -> DO NOT RETRY. Throw immediately.
+            if (isQuota429(err)) {
+              this.recordUpstreamDiagnosis(err, primaryModel, attempt);
+              throw err;
+            }
+
+            // Client 4xx errors (400, 401, 403, 404) -> DO NOT RETRY.
+            const status = typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : undefined;
+            if (status && status >= 400 && status < 500) {
+              this.recordUpstreamDiagnosis(err, primaryModel, attempt);
+              throw err;
+            }
+
+            // Only retry if transient 503 error AND attempts remain
+            if (isTransient503(err) && attempt < maxRetries) {
+              const jitter = Math.random() * 300;
+              const delayMs = Math.min(2500, Math.pow(2, attempt) * 800 + jitter);
+              await new Promise<void>((resolve) => {
+                const timer = setTimeout(resolve, delayMs);
+                abortController.signal.addEventListener('abort', () => {
+                  clearTimeout(timer);
+                  resolve();
+                }, { once: true });
+              });
+              continue;
+            }
+
+            this.recordUpstreamDiagnosis(err, primaryModel, attempt);
+            break;
           }
         }
+
+        // If primary model persists with 503 and an alternative fallback model is configured, try alternative model once
+        const fallbackModel = this.config.geminiFallbackModel;
+        if (isTransient503(lastError) && fallbackModel && fallbackModel !== primaryModel) {
+          try {
+            console.warn(`[DrAstraService] Model ${primaryModel} 503 UNAVAILABLE. Attempting fallback model ${fallbackModel}...`);
+            const fallbackText = await executeModelAttempt(fallbackModel);
+            if (fallbackText) return fallbackText;
+          } catch (fallbackErr: unknown) {
+            this.recordUpstreamDiagnosis(fallbackErr, fallbackModel, 0);
+            throw fallbackErr;
+          }
+        }
+
+        if (lastError) throw lastError;
 
         return '';
       })();

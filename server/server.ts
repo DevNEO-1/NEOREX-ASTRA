@@ -69,6 +69,7 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
       service: 'neorex-astra-backend',
       geminiConfigured: Boolean(config.geminiApiKey),
       model: config.geminiModel,
+      fallbackModel: config.geminiFallbackModel,
       nodeVersion: process.version,
       connectivityTest,
       timestamp: new Date().toISOString(),

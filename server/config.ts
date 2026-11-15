@@ -6,6 +6,7 @@ export interface ServerConfig {
   host: string;
   geminiApiKey: string | undefined;
   geminiModel: string;
+  geminiFallbackModel?: string;
   nodeEnv: string;
   allowedOrigins: string[];
 }
@@ -19,6 +20,7 @@ export function loadConfig(): ServerConfig {
     host: process.env.HOST || '0.0.0.0',
     geminiApiKey: process.env.GEMINI_API_KEY,
     geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    geminiFallbackModel: process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite',
     nodeEnv: process.env.NODE_ENV || 'development',
     allowedOrigins,
   };
