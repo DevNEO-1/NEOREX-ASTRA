@@ -1,5 +1,12 @@
+import dns from 'node:dns';
 import { createServer } from './server.js';
 import { loadConfig } from './config.js';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // Ignore in environments where not supported
+}
 
 const config = loadConfig();
 const app = createServer(config);

@@ -23,7 +23,7 @@ export class DrAstraService {
     if (mockClient) {
       this.aiClient = mockClient;
     } else if (config.geminiApiKey) {
-      this.aiClient = new GoogleGenAI({ apiKey: config.geminiApiKey });
+      this.aiClient = new GoogleGenAI({ apiKey: config.geminiApiKey, apiVersion: 'v1beta' });
     }
   }
 
