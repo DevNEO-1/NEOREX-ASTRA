@@ -203,6 +203,9 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 max_output_tokens: 1024,
               },
               store: false,
+            }, {
+              retries: { strategy: 'none' },
+              timeout_ms: 12000,
             });
 
             let text = interaction?.output_text || '';
@@ -235,6 +238,9 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 systemInstruction: systemPrompt,
                 maxOutputTokens: 1024,
                 abortSignal: abortController.signal,
+                httpOptions: {
+                  timeout: 12000,
+                },
               },
             });
             const text = response?.text || '';
