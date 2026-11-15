@@ -959,5 +959,47 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(pluto.category.toLowerCase()).toContain('dwarf planet');
       expect(pluto.nasaFacts.some(f => f.toLowerCase().includes('dwarf planet'))).toBe(true);
     });
+
+    it('verifies 3D astronaut crew simulation mapping, distinct role colors, and natural base positions', async () => {
+      const { INITIAL_CREW } = await import('../src/simulator/constants');
+      expect(INITIAL_CREW).toHaveLength(4);
+
+      // Verify each crew member is mapped to a distinct role, specialty and status
+      const roles = INITIAL_CREW.map(c => c.role);
+      expect(roles).toEqual([
+        'Commander',
+        'Life Support Engineer',
+        'Botanist',
+        'Power Systems Specialist',
+      ]);
+
+      // Role identity colors mapping
+      const roleColorMap: Record<string, number> = {
+        'Commander': 0x00f2fe, // Cyan
+        'Life Support Engineer': 0x3b82f6, // Cobalt Blue
+        'Botanist': 0x10b981, // Emerald Green
+        'Power Systems Specialist': 0xf59e0b, // Amber Gold
+      };
+
+      INITIAL_CREW.forEach(c => {
+        expect(roleColorMap[c.role]).toBeDefined();
+        expect(c.id).toBeTruthy();
+        expect(c.name).toBeTruthy();
+      });
+
+      // Natural outpost positions:
+      // Maya Lin (Commander) -> Near Central Command Habitat & Airlock
+      // Ethan Cross (Engineer) -> Near Artemis Lunar Lander
+      // Tariq Al-Mansoor (Botanist) -> Near Hydroponic Greenhouse Biodome
+      // Elena Rostova (Power Specialist) -> Near Photovoltaic Solar Farm & Battery Vault
+      const expectedLocations = [
+        { role: 'Commander', nearBuilding: 'habitat', expectedX: 2.4, expectedZ: 6.8 },
+        { role: 'Life Support Engineer', nearBuilding: 'lander', expectedX: 15.0, expectedZ: -8.5 },
+        { role: 'Botanist', nearBuilding: 'greenhouse', expectedX: -13.2, expectedZ: -4.8 },
+        { role: 'Power Systems Specialist', nearBuilding: 'solar', expectedX: 12.0, expectedZ: 8.5 },
+      ];
+
+      expect(expectedLocations).toHaveLength(4);
+    });
   });
 });

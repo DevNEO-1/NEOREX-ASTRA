@@ -1630,28 +1630,58 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         dustParticlesRef.current.geometry.attributes.position.needsUpdate = true;
       }
 
-      // Astronaut low-gravity bounce & breathing animation
+      // Astronaut low-gravity idle animation, looking around & equipment inspection
       if (astronautsGroupRef.current) {
         astronautsGroupRef.current.children.forEach((astronaut, idx) => {
-          const bounce = Math.abs(Math.sin(elapsedTime * 2.8 + idx * 1.6)) * 0.38;
           const ax = astronaut.position.x;
           const az = astronaut.position.z;
           const apt = getMoonSurfacePoint(ax, az, MOON_ENVIRONMENT_RADIUS);
+          
+          // Gentle low-gravity weight-shift bob
+          const bounce = Math.abs(Math.sin(elapsedTime * 2.2 + idx * 1.5)) * 0.035;
           astronaut.position.y = apt.y + bounce;
           astronaut.quaternion.copy(apt.quaternion);
           
-          // Subtle idle arm swing
-          const leftArm = astronaut.getObjectByName('leftArm');
-          const rightArm = astronaut.getObjectByName('rightArm');
-          if (leftArm && rightArm) {
-            leftArm.rotation.x = Math.sin(elapsedTime * 2.8 + idx) * 0.25;
-            rightArm.rotation.x = -Math.sin(elapsedTime * 2.8 + idx) * 0.25;
+          // Subtle body sway on boots
+          const rig = astronaut.getObjectByName('characterRig');
+          if (rig) {
+            rig.rotation.z = Math.sin(elapsedTime * 1.4 + idx * 2.0) * 0.025;
           }
 
-          // Subtle visor head turning
-          const visor = astronaut.getObjectByName('visor');
-          if (visor) {
-            visor.rotation.y = Math.sin(elapsedTime * 0.7 + idx) * 0.18;
+          // Visor and helmet looking around surveying the lunar base
+          const headGroup = astronaut.getObjectByName('headGroup') || astronaut.getObjectByName('visor');
+          if (headGroup) {
+            headGroup.rotation.y = Math.sin(elapsedTime * 0.65 + idx * 1.7) * 0.35;
+            headGroup.rotation.x = Math.sin(elapsedTime * 0.50 + idx * 1.1) * 0.08;
+          }
+
+          // Articulated arms and equipment inspection
+          const leftArm = astronaut.getObjectByName('leftArmGroup') || astronaut.getObjectByName('leftArm');
+          const rightArm = astronaut.getObjectByName('rightArmGroup') || astronaut.getObjectByName('rightArm');
+          if (leftArm) {
+            leftArm.rotation.x = Math.sin(elapsedTime * 1.5 + idx * 1.2) * 0.12;
+            leftArm.rotation.z = -0.10 + Math.sin(elapsedTime * 0.8 + idx) * 0.04;
+          }
+          if (rightArm) {
+            // Check if this astronaut is currently hovered by the user
+            const isHovered = hoveredEntity && hoveredEntity.title === astronaut.userData?.title;
+            if (isHovered) {
+              // Friendly astronaut greeting wave when hovered!
+              rightArm.rotation.x = -1.2 + Math.sin(elapsedTime * 6.0) * 0.25;
+              rightArm.rotation.z = 0.45 + Math.sin(elapsedTime * 6.0) * 0.15;
+            } else {
+              // Natural working posture holding equipment/datapad
+              rightArm.rotation.x = -0.40 + Math.sin(elapsedTime * 1.8 + idx * 1.4) * 0.14;
+              rightArm.rotation.y = Math.sin(elapsedTime * 1.1 + idx) * 0.08;
+              rightArm.rotation.z = 0.05;
+            }
+          }
+
+          // Floating role marker spin and soft float
+          const marker = astronaut.getObjectByName('floatingMarker');
+          if (marker) {
+            marker.rotation.y = elapsedTime * 1.8 + idx;
+            marker.position.y = 2.45 + Math.sin(elapsedTime * 2.5 + idx) * 0.05;
           }
         });
       }
@@ -2142,8 +2172,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       }
     }
 
-    // G. Astronaut 3D Characters with Asynchronous Realistic Asset & Procedural Fallback
-    let isCrewMounted = true;
+    // G. Realistic 3D Astronaut Crew Characters with Articulated Limbs & Detailed Spacesuits
     if (astronautsGroupRef.current) {
       const aGroup = astronautsGroupRef.current;
       while (aGroup.children.length > 0) {
@@ -2156,185 +2185,478 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         modelLoader.disposeHierarchy(oldChild);
       }
 
-      const astronautPositions = [
-        { x: 3.5, z: 7.2, label: crew[0]?.name || 'Commander' },
-        { x: -5.2, z: 8.4, label: crew[1]?.name || 'Life Support' },
-        { x: -11.5, z: 2.2, label: crew[2]?.name || 'Botanist' },
-        { x: 8.6, z: -4.5, label: crew[3]?.name || 'Power Spec' },
+      const roleColors = [0x00f2fe, 0x3b82f6, 0x10b981, 0xf59e0b];
+      const crewConfigs = [
+        {
+          x: 2.4,
+          z: 6.8,
+          rotationY: -0.35,
+          tool: 'datapad' as const,
+        },
+        {
+          x: 15.0,
+          z: -8.5,
+          rotationY: 2.15,
+          tool: 'scanner' as const,
+        },
+        {
+          x: -13.2,
+          z: -4.8,
+          rotationY: -1.85,
+          tool: 'canister' as const,
+        },
+        {
+          x: 12.0,
+          z: 8.5,
+          rotationY: 0.85,
+          tool: 'multimeter' as const,
+        },
       ];
 
-      const roleColors = [0x00f2fe, 0x3b82f6, 0x10b981, 0xf59e0b];
+      // Procedural realistic astronaut constructor
+      const createDetailedAstronaut = (member: typeof crew[0], idx: number) => {
+        const roleColor = roleColors[idx] || 0x00f2fe;
+        const baseConfig = crewConfigs[idx] || { x: 0, z: 6, rotationY: 0, tool: 'scanner' as const };
+        const targetPos = isSolarStorm 
+          ? { x: -14.2 + idx * 1.1, z: -4.5, rotationY: 0.1 }
+          : { x: baseConfig.x, z: baseConfig.z, rotationY: baseConfig.rotationY };
 
-      // Procedural fallback astronaut constructor
-      const createProceduralAstronaut = (member: typeof crew[0], idx: number, targetPos: { x: number; z: number }) => {
         const astronaut = new THREE.Group();
-        astronaut.name = `astronaut_proc_${member.id}`;
+        astronaut.name = `astronaut_${member.id}`;
         const apt = getMoonSurfacePoint(targetPos.x, targetPos.z, MOON_ENVIRONMENT_RADIUS);
         astronaut.position.set(targetPos.x, apt.y, targetPos.z);
         astronaut.quaternion.copy(apt.quaternion);
-        astronaut.userData = { 
+
+        const astronautUserData = { 
           type: 'astronaut', 
           astronautId: member.id, 
           title: member.name, 
-          category: member.role 
+          category: member.role,
+          specialty: member.specialty,
+          status: member.status,
+          health: member.health,
         };
+        astronaut.userData = astronautUserData;
 
-        const suitMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
-        const torsoGeo = new THREE.BoxGeometry(0.7, 0.9, 0.45);
-        const torso = new THREE.Mesh(torsoGeo, suitMat);
-        torso.position.y = 1.25;
-        torso.castShadow = true;
-        torso.userData = { ...astronaut.userData };
-        astronaut.add(torso);
+        // Inner rig rotated to the astronaut's orientation
+        const characterRig = new THREE.Group();
+        characterRig.name = 'characterRig';
+        characterRig.rotation.y = targetPos.rotationY;
+        astronaut.add(characterRig);
 
-        const backpackGeo = new THREE.BoxGeometry(0.55, 0.75, 0.3);
-        const backpackMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.5 });
-        const backpack = new THREE.Mesh(backpackGeo, backpackMat);
-        backpack.position.set(0, 1.3, -0.32);
-        astronaut.add(backpack);
+        // Core Spacesuit Materials
+        const suitMat = new THREE.MeshStandardMaterial({ 
+          color: 0xf8fafc, 
+          roughness: 0.35, 
+          metalness: 0.12 
+        });
+        const jointMat = new THREE.MeshStandardMaterial({ 
+          color: 0x475569, 
+          roughness: 0.55, 
+          metalness: 0.35 
+        });
+        const visorMat = new THREE.MeshStandardMaterial({ 
+          color: 0x78350f, 
+          emissive: 0x451a03, 
+          emissiveIntensity: 0.25, 
+          roughness: 0.06, 
+          metalness: 0.98 
+        });
+        const bootMat = new THREE.MeshStandardMaterial({ 
+          color: 0x1e293b, 
+          roughness: 0.85, 
+          metalness: 0.20 
+        });
+        const bootCapMat = new THREE.MeshStandardMaterial({ 
+          color: 0x475569, 
+          roughness: 0.40, 
+          metalness: 0.70 
+        });
+        const gloveMat = new THREE.MeshStandardMaterial({ 
+          color: 0x334155, 
+          roughness: 0.60, 
+          metalness: 0.30 
+        });
+        const roleMat = new THREE.MeshStandardMaterial({ 
+          color: roleColor, 
+          emissive: roleColor, 
+          emissiveIntensity: 0.45, 
+          roughness: 0.25 
+        });
 
-        const helmetGeo = new THREE.SphereGeometry(0.38, 16, 16);
-        const helmet = new THREE.Mesh(helmetGeo, suitMat);
-        helmet.position.y = 1.95;
-        astronaut.add(helmet);
+        // 1. Heavy Lunar Overboots with Soles & Toe Caps
+        [-0.20, 0.20].forEach((footX, fIdx) => {
+          const footGroup = new THREE.Group();
+          footGroup.position.set(footX, 0, 0);
 
-        const visorGeo = new THREE.SphereGeometry(0.39, 16, 8, 0, Math.PI, 0.3, 1.2);
-        const visorMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.95, roughness: 0.1 });
+          // Sole tread
+          const soleGeo = new THREE.BoxGeometry(0.24, 0.08, 0.38);
+          const sole = new THREE.Mesh(soleGeo, bootMat);
+          sole.position.set(0, 0.04, 0.02);
+          sole.castShadow = true;
+          footGroup.add(sole);
+
+          // Boot upper body
+          const bootBodyGeo = new THREE.BoxGeometry(0.22, 0.14, 0.34);
+          const bootBody = new THREE.Mesh(bootBodyGeo, suitMat);
+          bootBody.position.set(0, 0.13, 0.02);
+          bootBody.castShadow = true;
+          footGroup.add(bootBody);
+
+          // Metallic reinforced toe cap
+          const toeCapGeo = new THREE.BoxGeometry(0.23, 0.12, 0.12);
+          const toeCap = new THREE.Mesh(toeCapGeo, bootCapMat);
+          toeCap.position.set(0, 0.10, 0.14);
+          footGroup.add(toeCap);
+
+          // Lower Leg
+          const lowerLegGeo = new THREE.CylinderGeometry(0.11, 0.13, 0.44, 12);
+          const lowerLeg = new THREE.Mesh(lowerLegGeo, suitMat);
+          lowerLeg.position.set(0, 0.38, 0);
+          lowerLeg.castShadow = true;
+          footGroup.add(lowerLeg);
+
+          // Knee Flex Joint
+          const kneeGeo = new THREE.SphereGeometry(0.12, 8, 8);
+          const knee = new THREE.Mesh(kneeGeo, jointMat);
+          knee.position.set(0, 0.62, 0.02);
+          footGroup.add(knee);
+
+          // Upper Leg / Thigh
+          const upperLegGeo = new THREE.CylinderGeometry(0.135, 0.12, 0.44, 12);
+          const upperLeg = new THREE.Mesh(upperLegGeo, suitMat);
+          upperLeg.position.set(0, 0.86, 0);
+          upperLeg.castShadow = true;
+          footGroup.add(upperLeg);
+
+          footGroup.name = fIdx === 0 ? 'leftLegGroup' : 'rightLegGroup';
+          characterRig.add(footGroup);
+        });
+
+        // 2. Pelvis & Utility Belt
+        const pelvisGeo = new THREE.CylinderGeometry(0.31, 0.28, 0.22, 14);
+        const pelvis = new THREE.Mesh(pelvisGeo, suitMat);
+        pelvis.position.y = 1.10;
+        pelvis.castShadow = true;
+        characterRig.add(pelvis);
+
+        const beltGeo = new THREE.TorusGeometry(0.32, 0.035, 8, 20);
+        const belt = new THREE.Mesh(beltGeo, jointMat);
+        belt.rotation.x = Math.PI / 2;
+        belt.position.y = 1.16;
+        characterRig.add(belt);
+
+        const pouchGeo = new THREE.BoxGeometry(0.10, 0.14, 0.12);
+        const pouch = new THREE.Mesh(pouchGeo, jointMat);
+        pouch.position.set(0.32, 1.12, 0.02);
+        characterRig.add(pouch);
+
+        // 3. Torso & Hard Upper Torso (HUT)
+        const torso = new THREE.Group();
+        torso.name = 'torso';
+        torso.position.set(0, 1.48, 0);
+
+        const chestBodyGeo = new THREE.BoxGeometry(0.66, 0.62, 0.42);
+        const chestBody = new THREE.Mesh(chestBodyGeo, suitMat);
+        chestBody.castShadow = true;
+        torso.add(chestBody);
+
+        // Display & Control Module (DCM) on front of chest
+        const dcmBoxGeo = new THREE.BoxGeometry(0.36, 0.26, 0.10);
+        const dcmBoxMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.7 });
+        const dcmBox = new THREE.Mesh(dcmBoxGeo, dcmBoxMat);
+        dcmBox.position.set(0, 0.02, 0.24);
+        torso.add(dcmBox);
+
+        // DCM Screen / Telemetry Display
+        const dcmScreenGeo = new THREE.BoxGeometry(0.20, 0.10, 0.02);
+        const dcmScreenMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
+        const dcmScreen = new THREE.Mesh(dcmScreenGeo, dcmScreenMat);
+        dcmScreen.position.set(0, 0.04, 0.295);
+        torso.add(dcmScreen);
+
+        // Status LEDs (Oxygen Nominal & Telemetry Link)
+        const ledGeo = new THREE.SphereGeometry(0.025, 8, 8);
+        const ledGreen = new THREE.Mesh(ledGeo, new THREE.MeshBasicMaterial({ color: member.health > 50 ? 0x10b981 : 0xf59e0b }));
+        ledGreen.position.set(-0.11, 0.05, 0.295);
+        torso.add(ledGreen);
+
+        const ledCyan = new THREE.Mesh(ledGeo, new THREE.MeshBasicMaterial({ color: 0x06b6d4 }));
+        ledCyan.position.set(-0.11, -0.03, 0.295);
+        torso.add(ledCyan);
+
+        // Distinct Role Epaulet Stripes on Shoulders
+        [-0.34, 0.34].forEach(sx => {
+          const stripeGeo = new THREE.BoxGeometry(0.12, 0.05, 0.36);
+          const stripe = new THREE.Mesh(stripeGeo, roleMat);
+          stripe.position.set(sx, 0.28, 0);
+          torso.add(stripe);
+        });
+
+        // Artemis Mission Crest Patch on Upper Right Chest
+        const crestGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.02, 12);
+        const crestMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, metalness: 0.6, roughness: 0.3 });
+        const crest = new THREE.Mesh(crestGeo, crestMat);
+        crest.rotation.x = Math.PI / 2;
+        crest.position.set(0.18, 0.16, 0.22);
+        torso.add(crest);
+
+        characterRig.add(torso);
+
+        // 4. Primary Life Support System (PLSS) Backpack
+        const plssGroup = new THREE.Group();
+        plssGroup.position.set(0, 1.54, -0.32);
+
+        const packHousingGeo = new THREE.BoxGeometry(0.54, 0.74, 0.28);
+        const packHousingMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.45, metalness: 0.25 });
+        const packHousing = new THREE.Mesh(packHousingGeo, packHousingMat);
+        packHousing.castShadow = true;
+        plssGroup.add(packHousing);
+
+        // Twin High-Pressure Cryogenic Tanks
+        [-0.14, 0.14].forEach(tx => {
+          const tankGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.48, 12);
+          const tankMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.25 });
+          const tank = new THREE.Mesh(tankGeo, tankMat);
+          tank.position.set(tx, 0.08, -0.12);
+          plssGroup.add(tank);
+
+          // Valve regulator cap
+          const capGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8);
+          const capMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.7 });
+          const cap = new THREE.Mesh(capGeo, capMat);
+          cap.position.set(tx, 0.34, -0.12);
+          plssGroup.add(cap);
+        });
+
+        // Communications S-Band Antenna Mast
+        const antGeo = new THREE.CylinderGeometry(0.012, 0.015, 0.44, 6);
+        const antMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.9 });
+        const ant = new THREE.Mesh(antGeo, antMat);
+        ant.position.set(0.22, 0.48, -0.06);
+        ant.rotation.z = -0.12;
+        plssGroup.add(ant);
+
+        // Rear Status Beacon
+        const beaconGeo = new THREE.SphereGeometry(0.035, 8, 8);
+        const beacon = new THREE.Mesh(beaconGeo, new THREE.MeshBasicMaterial({ color: roleColor }));
+        beacon.position.set(-0.20, 0.32, -0.12);
+        plssGroup.add(beacon);
+
+        characterRig.add(plssGroup);
+
+        // 5. Helmet, Reflective Visor & Head Spotlights
+        const headGroup = new THREE.Group();
+        headGroup.name = 'headGroup';
+        headGroup.position.set(0, 1.84, 0);
+
+        // Helmet Disconnect Neck Ring Collar
+        const collarGeo = new THREE.CylinderGeometry(0.24, 0.26, 0.08, 16);
+        const collarMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.85, roughness: 0.3 });
+        const collar = new THREE.Mesh(collarGeo, collarMat);
+        collar.position.y = 0.02;
+        headGroup.add(collar);
+
+        // Outer Spherical Helmet Shell
+        const helmetShellGeo = new THREE.SphereGeometry(0.33, 20, 16);
+        const helmetShell = new THREE.Mesh(helmetShellGeo, suitMat);
+        helmetShell.position.set(0, 0.20, 0);
+        helmetShell.castShadow = true;
+        headGroup.add(helmetShell);
+
+        // Deep Reflective Dark Visor
+        const visorGeo = new THREE.SphereGeometry(0.335, 20, 12, 0, Math.PI, 0.25, 1.35);
         const visor = new THREE.Mesh(visorGeo, visorMat);
         visor.name = 'visor';
-        visor.position.y = 1.95;
-        astronaut.add(visor);
+        visor.position.set(0, 0.20, 0.01);
+        headGroup.add(visor);
 
-        const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
-        const leftArm = new THREE.Mesh(armGeo, suitMat);
-        leftArm.name = 'leftArm';
-        leftArm.position.set(-0.48, 1.25, 0);
-        astronaut.add(leftArm);
+        // Helmet Mini EVA Spotlights (Left and Right)
+        [-0.34, 0.34].forEach(hx => {
+          const lightBodyGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.10, 8);
+          const lightBody = new THREE.Mesh(lightBodyGeo, jointMat);
+          lightBody.rotation.x = Math.PI / 2;
+          lightBody.position.set(hx, 0.22, 0.12);
+          headGroup.add(lightBody);
 
-        const rightArm = new THREE.Mesh(armGeo, suitMat);
-        rightArm.name = 'rightArm';
-        rightArm.position.set(0.48, 1.25, 0);
-        astronaut.add(rightArm);
+          const lensGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.02, 8);
+          const lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+          const lens = new THREE.Mesh(lensGeo, lensMat);
+          lens.rotation.x = Math.PI / 2;
+          lens.position.set(hx, 0.22, 0.18);
+          headGroup.add(lens);
+        });
 
-        const legMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0 });
-        const leftLegGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.8, 8);
-        const leftLeg = new THREE.Mesh(leftLegGeo, legMat);
-        leftLeg.position.set(-0.2, 0.4, 0);
-        astronaut.add(leftLeg);
+        characterRig.add(headGroup);
 
-        const rightLeg = new THREE.Mesh(leftLegGeo, legMat);
-        rightLeg.position.set(0.2, 0.4, 0);
-        astronaut.add(rightLeg);
+        // 6. Left Arm with Articulated Upper Arm, Elbow, Forearm & EVA Glove
+        const leftArmGroup = new THREE.Group();
+        leftArmGroup.name = 'leftArmGroup';
+        leftArmGroup.position.set(-0.42, 1.66, 0);
 
-        // Role indicator ring
-        const ringGeo = new THREE.RingGeometry(0.5, 0.68, 16);
-        const ringMat = new THREE.MeshBasicMaterial({ color: roleColors[idx] || 0xffffff, side: THREE.DoubleSide });
-        const ring = new THREE.Mesh(ringGeo, ringMat);
-        ring.rotation.x = -Math.PI / 2;
-        ring.position.y = 0.05;
-        astronaut.add(ring);
+        const lUpperArmGeo = new THREE.CylinderGeometry(0.09, 0.10, 0.36, 10);
+        const lUpperArm = new THREE.Mesh(lUpperArmGeo, suitMat);
+        lUpperArm.position.y = -0.18;
+        lUpperArm.name = 'leftArm';
+        leftArmGroup.add(lUpperArm);
 
-        return { group: astronaut, interactiveMesh: torso };
+        const lElbowGeo = new THREE.SphereGeometry(0.095, 8, 8);
+        const lElbow = new THREE.Mesh(lElbowGeo, jointMat);
+        lElbow.position.y = -0.36;
+        leftArmGroup.add(lElbow);
+
+        const lForearmGeo = new THREE.CylinderGeometry(0.095, 0.105, 0.34, 10);
+        const lForearm = new THREE.Mesh(lForearmGeo, suitMat);
+        lForearm.position.y = -0.54;
+        leftArmGroup.add(lForearm);
+
+        const lGloveGeo = new THREE.BoxGeometry(0.14, 0.16, 0.10);
+        const lGlove = new THREE.Mesh(lGloveGeo, gloveMat);
+        lGlove.position.y = -0.74;
+        leftArmGroup.add(lGlove);
+
+        characterRig.add(leftArmGroup);
+
+        // 7. Right Arm with Equipment Item
+        const rightArmGroup = new THREE.Group();
+        rightArmGroup.name = 'rightArmGroup';
+        rightArmGroup.position.set(0.42, 1.66, 0);
+
+        const rUpperArmGeo = new THREE.CylinderGeometry(0.09, 0.10, 0.36, 10);
+        const rUpperArm = new THREE.Mesh(rUpperArmGeo, suitMat);
+        rUpperArm.position.y = -0.18;
+        rUpperArm.name = 'rightArm';
+        rightArmGroup.add(rUpperArm);
+
+        const rElbowGeo = new THREE.SphereGeometry(0.095, 8, 8);
+        const rElbow = new THREE.Mesh(rElbowGeo, jointMat);
+        rElbow.position.y = -0.36;
+        rightArmGroup.add(rElbow);
+
+        const rForearmGeo = new THREE.CylinderGeometry(0.095, 0.105, 0.34, 10);
+        const rForearm = new THREE.Mesh(rForearmGeo, suitMat);
+        rForearm.position.y = -0.54;
+        rightArmGroup.add(rForearm);
+
+        const rGloveGeo = new THREE.BoxGeometry(0.14, 0.16, 0.10);
+        const rGlove = new THREE.Mesh(rGloveGeo, gloveMat);
+        rGlove.position.y = -0.74;
+        rightArmGroup.add(rGlove);
+
+        // Specialty Equipment Tool Held in Hand
+        const tool = baseConfig.tool;
+        if (tool === 'datapad') {
+          // Holographic Base Telemetry Datapad (Dr. Maya Lin)
+          const padBodyGeo = new THREE.BoxGeometry(0.24, 0.32, 0.02);
+          const padBodyMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 });
+          const padBody = new THREE.Mesh(padBodyGeo, padBodyMat);
+          padBody.position.set(0, -0.78, 0.16);
+          padBody.rotation.x = -0.65;
+          rightArmGroup.add(padBody);
+
+          const screenGeo = new THREE.BoxGeometry(0.20, 0.28, 0.01);
+          const screenMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
+          const screen = new THREE.Mesh(screenGeo, screenMat);
+          screen.position.set(0, -0.78, 0.175);
+          screen.rotation.x = -0.65;
+          rightArmGroup.add(screen);
+        } else if (tool === 'scanner') {
+          // ECLSS Diagnostic Pressure Scanner Tool (Lt. Ethan Cross)
+          const scannerGeo = new THREE.BoxGeometry(0.12, 0.26, 0.12);
+          const scannerMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8 });
+          const scanner = new THREE.Mesh(scannerGeo, scannerMat);
+          scanner.position.set(0, -0.76, 0.14);
+          rightArmGroup.add(scanner);
+
+          const sensorTipGeo = new THREE.CylinderGeometry(0.04, 0.06, 0.10, 8);
+          const sensorTipMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+          const sensorTip = new THREE.Mesh(sensorTipGeo, sensorTipMat);
+          sensorTip.position.set(0, -0.62, 0.14);
+          rightArmGroup.add(sensorTip);
+        } else if (tool === 'canister') {
+          // Regolith Core Sampling Canister (Dr. Tariq Al-Mansoor)
+          const canGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.34, 10);
+          const canMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7 });
+          const can = new THREE.Mesh(canGeo, canMat);
+          can.position.set(0, -0.74, 0.12);
+          rightArmGroup.add(can);
+
+          const tubeGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.22, 8);
+          const tubeMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+          const tube = new THREE.Mesh(tubeGeo, tubeMat);
+          tube.position.set(0, -0.74, 0.12);
+          rightArmGroup.add(tube);
+        } else {
+          // Photovoltaic Multimeter & Electrical Probe (Elena Rostova)
+          const meterGeo = new THREE.BoxGeometry(0.14, 0.22, 0.08);
+          const meterMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.6 });
+          const meter = new THREE.Mesh(meterGeo, meterMat);
+          meter.position.set(0, -0.74, 0.14);
+          rightArmGroup.add(meter);
+
+          const dialGeo = new THREE.BoxGeometry(0.10, 0.08, 0.02);
+          const dialMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+          const dial = new THREE.Mesh(dialGeo, dialMat);
+          dial.position.set(0, -0.70, 0.185);
+          rightArmGroup.add(dial);
+        }
+
+        characterRig.add(rightArmGroup);
+
+        // 8. Ground Role Ring
+        const groundRingGeo = new THREE.RingGeometry(0.65, 0.85, 24);
+        const groundRingMat = new THREE.MeshBasicMaterial({ 
+          color: roleColor, 
+          side: THREE.DoubleSide, 
+          transparent: true, 
+          opacity: 0.75 
+        });
+        const groundRing = new THREE.Mesh(groundRingGeo, groundRingMat);
+        groundRing.rotation.x = -Math.PI / 2;
+        groundRing.position.y = 0.04;
+        astronaut.add(groundRing);
+
+        // 9. Floating Role Marker Diamond & Soft Fill Light
+        const markerGeo = new THREE.OctahedronGeometry(0.14, 0);
+        const markerMat = new THREE.MeshStandardMaterial({ 
+          color: roleColor, 
+          emissive: roleColor, 
+          emissiveIntensity: 0.85, 
+          roughness: 0.2 
+        });
+        const marker = new THREE.Mesh(markerGeo, markerMat);
+        marker.name = 'floatingMarker';
+        marker.position.y = 2.45;
+        astronaut.add(marker);
+
+        // Local gentle fill light ensuring astronaut is clearly lit in all conditions
+        const fillLight = new THREE.PointLight(roleColor, 0.75, 4.0);
+        fillLight.position.set(0, 1.8, 0.5);
+        astronaut.add(fillLight);
+
+        // Register all child meshes for raycasting & user interaction
+        astronaut.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            child.userData = { ...astronautUserData };
+            if (!interactiveObjectsRef.current.includes(child)) {
+              interactiveObjectsRef.current.push(child);
+            }
+          }
+        });
+
+        return astronaut;
       };
 
-      // Populate initial astronauts with procedural geometry
+      // Populate all 4 astronauts
       crew.forEach((member, idx) => {
         if (member.health <= 0) return;
-
-        const posConfig = astronautPositions[idx] || { x: 0, z: 6, label: member.name };
-        const targetPos = isSolarStorm ? { x: -16 + idx * 1.2, z: -6 } : { x: posConfig.x, z: posConfig.z };
-
-        const { group: procAstro, interactiveMesh } = createProceduralAstronaut(member, idx, targetPos);
-        aGroup.add(procAstro);
-        if (!interactiveObjectsRef.current.includes(interactiveMesh)) {
-          interactiveObjectsRef.current.push(interactiveMesh);
-        }
-      });
-
-      // Asynchronously load NASA Astronaut GLB model and replace procedural meshes
-      modelLoader.loadModel('/models/astronaut/astronaut.glb').then((cachedAstro) => {
-        if (!isCrewMounted || !astronautsGroupRef.current) return;
-
-        crew.forEach((member, idx) => {
-          if (member.health <= 0) return;
-
-          const posConfig = astronautPositions[idx] || { x: 0, z: 6, label: member.name };
-          const targetPos = isSolarStorm ? { x: -16 + idx * 1.2, z: -6 } : { x: posConfig.x, z: posConfig.z };
-
-          const astronautUserData = { 
-            type: 'astronaut', 
-            astronautId: member.id, 
-            title: member.name, 
-            category: member.role 
-          };
-
-          // Clone the cached astronaut asset with proper scale and coordinate rotation
-          const astroInstance = modelLoader.instantiateModel(cachedAstro, {
-            position: [0, 0, 0],
-            rotation: [0, idx * 0.4, 0],
-            scale: 0.026,
-            castShadow: true,
-            receiveShadow: true,
-            userData: astronautUserData,
-          }, '/models/astronaut/astronaut.glb');
-
-          // Outer container to preserve idle animation bounce
-          const astroWrapper = new THREE.Group();
-          astroWrapper.name = `astronaut_glb_${member.id}`;
-          const apt = getMoonSurfacePoint(targetPos.x, targetPos.z, MOON_ENVIRONMENT_RADIUS);
-          astroWrapper.position.set(targetPos.x, apt.y, targetPos.z);
-          astroWrapper.quaternion.copy(apt.quaternion);
-          astroWrapper.userData = astronautUserData;
-          astroWrapper.add(astroInstance);
-
-          // Add role indicator ring
-          const ringGeo = new THREE.RingGeometry(0.55, 0.72, 16);
-          const ringMat = new THREE.MeshBasicMaterial({ color: roleColors[idx] || 0xffffff, side: THREE.DoubleSide });
-          const ring = new THREE.Mesh(ringGeo, ringMat);
-          ring.rotation.x = -Math.PI / 2;
-          ring.position.y = 0.05;
-          astroWrapper.add(ring);
-
-          // Find and swap procedural fallback, removing its old interactive meshes
-          const existingProc = aGroup.getObjectByName(`astronaut_proc_${member.id}`);
-          if (existingProc) {
-            existingProc.traverse((child) => {
-              interactiveObjectsRef.current = interactiveObjectsRef.current.filter(obj => obj !== child);
-            });
-            aGroup.remove(existingProc);
-            modelLoader.disposeHierarchy(existingProc);
-          }
-
-          // If a previous GLB instance for this astronaut exists in the group, remove it
-          const existingGlb = aGroup.getObjectByName(`astronaut_glb_${member.id}`);
-          if (existingGlb) {
-            existingGlb.traverse((child) => {
-              interactiveObjectsRef.current = interactiveObjectsRef.current.filter(obj => obj !== child);
-            });
-            aGroup.remove(existingGlb);
-            modelLoader.disposeHierarchy(existingGlb);
-          }
-
-          aGroup.add(astroWrapper);
-
-          // Add interactive raycasting meshes
-          astroInstance.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh) {
-              child.userData = { ...astronautUserData };
-              if (!interactiveObjectsRef.current.includes(child)) {
-                interactiveObjectsRef.current.push(child);
-              }
-            }
-          });
-        });
-      }).catch(() => {
-        // Fallback remains active on error
+        const astronautGroup = createDetailedAstronaut(member, idx);
+        aGroup.add(astronautGroup);
       });
     }
 
-    return () => {
-      isCrewMounted = false;
-    };
   }, [gameState]);
 
   // Camera preset transitions with smooth animated targets
