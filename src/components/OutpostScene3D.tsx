@@ -19,6 +19,7 @@ import {
 import { audioSystem } from '../utils/audioSystem';
 import { modelLoader } from '../utils/modelLoader';
 import { 
+  getSunTexture,
   getEarthTexture, 
   getEarthCloudsTexture, 
   getMarsTexture, 
@@ -39,15 +40,10 @@ import { PlanetInspectorModal } from './PlanetInspectorModal';
 import { createExplorationRover } from '../utils/roverProcedural';
 
 export type CameraPresetView =
-  | 'orbital'
-  | 'habitat'
-  | 'solar'
-  | 'greenhouse'
-  | 'lander'
-  | 'water'
-  | 'shelter'
-  | 'rover'
+  | 'lunar_surface'
+  | 'moon_globe'
   | 'solar_system'
+  | 'sun'
   | 'mercury'
   | 'venus'
   | 'earth'
@@ -57,7 +53,33 @@ export type CameraPresetView =
   | 'saturn'
   | 'uranus'
   | 'neptune'
-  | 'pluto';
+  | 'pluto'
+  | 'orbital'
+  | 'habitat'
+  | 'solar'
+  | 'greenhouse'
+  | 'lander'
+  | 'water'
+  | 'shelter'
+  | 'rover';
+
+export const MOON_ENVIRONMENT_RADIUS = 38;
+
+/**
+ * Computes exact spherical Moon surface point, elevation, outward normal, and tangent orientation.
+ */
+export function getMoonSurfacePoint(x: number, z: number, R: number = MOON_ENVIRONMENT_RADIUS): {
+  y: number;
+  normal: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+} {
+  const r2 = x * x + z * z;
+  const sphereY = Math.sqrt(Math.max(0.01, R * R - r2));
+  const y = sphereY - R; // Top polar surface is at y = 0
+  const normal = new THREE.Vector3(x, sphereY, z).normalize();
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+  return { y, normal, quaternion };
+}
 
 /**
  * Creates scientific visualization rotation axis with north/south pole pips and directional rotation arrow.
@@ -281,7 +303,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
     // Camera
     const aspect = container.clientWidth / container.clientHeight;
-    const camera = new THREE.PerspectiveCamera(45, aspect, 0.5, 1200);
+    const camera = new THREE.PerspectiveCamera(45, aspect, 0.5, 3500);
     cameraRef.current = camera;
     camera.position.set(25, 20, 35);
     camera.lookAt(0, 2.5, 0);
@@ -310,18 +332,21 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     ambientLightRef.current = ambientLight;
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfffbf2, 2.2);
+    // Directional sunlight radiating from the Sun's coordinates toward the Moon base
+    const sunLight = new THREE.DirectionalLight(0xfffbf2, 2.5);
     sunLightRef.current = sunLight;
-    sunLight.position.set(40, 28, 30);
+    sunLight.position.set(-165, 85, -60);
+    sunLight.target.position.set(0, 0, 0);
+    scene.add(sunLight.target);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 1;
-    sunLight.shadow.camera.far = 160;
-    sunLight.shadow.camera.left = -45;
-    sunLight.shadow.camera.right = 45;
-    sunLight.shadow.camera.top = 45;
-    sunLight.shadow.camera.bottom = -45;
+    sunLight.shadow.camera.near = 10;
+    sunLight.shadow.camera.far = 400;
+    sunLight.shadow.camera.left = -60;
+    sunLight.shadow.camera.right = 60;
+    sunLight.shadow.camera.top = 60;
+    sunLight.shadow.camera.bottom = -60;
     sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
@@ -329,6 +354,80 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     const celestialGroup = new THREE.Group();
     celestialGroupRef.current = celestialGroup;
     scene.add(celestialGroup);
+
+    // ==========================================
+    // THE SUN (SOL) — CENTRAL STELLAR OBJECT
+    // ==========================================
+    const sunGroup = new THREE.Group();
+    sunGroup.position.set(-165, 85, -60);
+    sunGroup.userData = {
+      type: 'planet',
+      planetId: 'sun',
+      title: CELESTIAL_BODIES.sun.name,
+      category: CELESTIAL_BODIES.sun.category,
+    };
+
+    // Sun Photosphere Sphere (Scale: 42, Visual relative scale: 75, substantially larger than gas giants)
+    const sunGeo = new THREE.SphereGeometry(42.0, 48, 48);
+    const sunMat = new THREE.MeshBasicMaterial({
+      map: getSunTexture(),
+      color: 0xffffff,
+    });
+    const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    sunMesh.userData = { ...sunGroup.userData };
+    sunGroup.add(sunMesh);
+    interactiveObjectsRef.current.push(sunMesh);
+
+    // Inner Chromosphere Glow Shell
+    const innerCoronaGeo = new THREE.SphereGeometry(43.5, 32, 32);
+    const innerCoronaMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.BackSide,
+    });
+    const innerCorona = new THREE.Mesh(innerCoronaGeo, innerCoronaMat);
+    sunGroup.add(innerCorona);
+
+    // Outer Solar Corona Atmosphere
+    const outerCoronaGeo = new THREE.SphereGeometry(46.0, 32, 32);
+    const outerCoronaMat = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.BackSide,
+    });
+    const outerCorona = new THREE.Mesh(outerCoronaGeo, outerCoronaMat);
+    sunGroup.add(outerCorona);
+
+    // Radial Solar Flare Corona Ring
+    const coronaRingGeo = new THREE.RingGeometry(42.5, 64.0, 48);
+    const coronaRingMat = new THREE.MeshBasicMaterial({
+      color: 0xfde047,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+    });
+    const coronaRing = new THREE.Mesh(coronaRingGeo, coronaRingMat);
+    coronaRing.lookAt(camera.position);
+    sunGroup.add(coronaRing);
+
+    // Sun Billboarded 3D Name Label Sprite
+    const sunLabelSprite = createPlanetLabelSprite(CELESTIAL_BODIES.sun.name, 'Primary Star • 1.39M km');
+    sunLabelSprite.position.set(0, 47.0, 0);
+    sunLabelSprite.userData = { ...sunGroup.userData };
+    sunGroup.add(sunLabelSprite);
+    interactiveObjectsRef.current.push(sunLabelSprite);
+
+    celestialGroup.add(sunGroup);
+
+    // Continuous rotation for Sun
+    planetaryMeshesRef.current.push({
+      id: 'sun',
+      mesh: sunMesh,
+      rotationRate: 0.005,
+    });
 
     // 1. Multi-Layer Starfield
     // Layer 1: Deep field faint stars (1,200 points)
@@ -515,8 +614,8 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         id: 'mercury',
         name: CELESTIAL_BODIES.mercury.name,
         category: CELESTIAL_BODIES.mercury.category,
-        pos: [-110, 58, -60],
-        scale: 2.8,
+        pos: [-125, 68, -75],
+        scale: 11.5, // Visual scale 16 (> Moon 10)
         axialTiltDeg: 0.03,
         isRetrograde: false,
         rotationRate: 0.004,
@@ -530,8 +629,8 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         id: 'venus',
         name: CELESTIAL_BODIES.venus.name,
         category: CELESTIAL_BODIES.venus.category,
-        pos: [-88, 62, -78],
-        scale: 4.8,
+        pos: [-98, 72, -95],
+        scale: 15.8, // Visual scale 22 (> Moon 10)
         axialTiltDeg: 177.3, // Retrograde spin
         isRetrograde: true,
         rotationRate: -0.003,
@@ -549,8 +648,8 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         id: 'earth',
         name: CELESTIAL_BODIES.earth.name,
         category: CELESTIAL_BODIES.earth.category,
-        pos: [-62, 66, -92],
-        scale: 5.2,
+        pos: [-68, 76, -112],
+        scale: 18.0, // Visual scale 25 (> Moon 10)
         axialTiltDeg: 23.44,
         isRetrograde: false,
         rotationRate: 0.018,
@@ -564,30 +663,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         haloScale: [1.03, 1.25],
         labelSubtitle: '1.00 AU • Home World',
       },
-      // 4. The Moon (Realistic full 360-degree Moon model positioned beside Earth as planetary pair)
-      {
-        id: 'moon',
-        name: CELESTIAL_BODIES.moon.name,
-        category: CELESTIAL_BODIES.moon.category,
-        pos: [-50, 70, -88], // Beside Earth as companion
-        scale: 1.8, // Clearly smaller than Earth and all planets, preserving scale hierarchy
-        axialTiltDeg: 1.54,
-        isRetrograde: false,
-        rotationRate: 0.006,
-        textureGetter: getMoonTexture,
-        bumpMapGetter: getMoonBumpMap,
-        bumpScale: 0.12,
-        roughness: 0.94,
-        metalness: 0.05,
-        labelSubtitle: '0.27 Earth • Artemis Base',
-      },
-      // 5. Mars (Red Planet)
+      // 4. Mars (Red Planet)
       {
         id: 'mars',
         name: CELESTIAL_BODIES.mars.name,
         category: CELESTIAL_BODIES.mars.category,
-        pos: [-28, 72, -104],
-        scale: 3.6,
+        pos: [-32, 78, -125],
+        scale: 13.6, // Visual scale 19 (> Moon 10)
         axialTiltDeg: 25.19,
         isRetrograde: false,
         rotationRate: 0.017,
@@ -600,13 +682,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         haloScale: [1.02, 1.15],
         labelSubtitle: '1.52 AU • Red Planet',
       },
-      // 6. Jupiter (Visually impressive gas giant with Galilean moons)
+      // 5. Jupiter (Visually impressive gas giant with Galilean moons)
       {
         id: 'jupiter',
         name: CELESTIAL_BODIES.jupiter.name,
         category: CELESTIAL_BODIES.jupiter.category,
-        pos: [12, 76, -114],
-        scale: 9.2, // Massive gas giant
+        pos: [18, 80, -135],
+        scale: 34.5, // Visual scale 48 — massive gas giant
         axialTiltDeg: 3.13,
         isRetrograde: false,
         rotationRate: 0.038, // Rapid ~10h rotation
@@ -621,13 +703,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         ],
         labelSubtitle: '5.20 AU • Gas Giant',
       },
-      // 7. Saturn (Golden gas giant with prominent 3D rings)
+      // 6. Saturn (Golden gas giant with prominent 3D rings)
       {
         id: 'saturn',
         name: CELESTIAL_BODIES.saturn.name,
         category: CELESTIAL_BODIES.saturn.category,
-        pos: [56, 74, -108],
-        scale: 7.6, // Impressive ringed giant
+        pos: [72, 76, -125],
+        scale: 28.8, // Visual scale 40 — impressive ringed giant
         axialTiltDeg: 26.73,
         isRetrograde: false,
         rotationRate: 0.034,
@@ -642,13 +724,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         ringsOpacity: 0.92,
         labelSubtitle: '9.58 AU • Ringed Giant',
       },
-      // 8. Uranus (Tilted cyan ice giant with delicate vertical rings)
+      // 7. Uranus (Tilted cyan ice giant with delicate vertical rings)
       {
         id: 'uranus',
         name: CELESTIAL_BODIES.uranus.name,
         category: CELESTIAL_BODIES.uranus.category,
-        pos: [92, 68, -94],
-        scale: 5.6,
+        pos: [118, 70, -105],
+        scale: 20.8, // Visual scale 29 (> Moon 10)
         axialTiltDeg: 97.77, // Extreme 98° tilt - rolls on its side!
         isRetrograde: true,
         rotationRate: -0.026,
@@ -663,13 +745,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         ringsOpacity: 0.75,
         labelSubtitle: '19.2 AU • Ice Giant',
       },
-      // 9. Neptune (Vibrant deep blue ice giant with supersonic winds)
+      // 8. Neptune (Vibrant deep blue ice giant with supersonic winds)
       {
         id: 'neptune',
         name: CELESTIAL_BODIES.neptune.name,
         category: CELESTIAL_BODIES.neptune.category,
-        pos: [122, 62, -76],
-        scale: 5.4,
+        pos: [154, 64, -85],
+        scale: 19.4, // Visual scale 27 (> Moon 10)
         axialTiltDeg: 28.32,
         isRetrograde: false,
         rotationRate: 0.028,
@@ -678,13 +760,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         metalness: 0.05,
         labelSubtitle: '30.1 AU • Windy Giant',
       },
-      // 10. Pluto (Dwarf Planet with heart-shaped nitrogen glacier)
+      // 9. Pluto (Dwarf Planet with heart-shaped nitrogen glacier)
       {
         id: 'pluto',
         name: CELESTIAL_BODIES.pluto.name,
         category: CELESTIAL_BODIES.pluto.category,
-        pos: [146, 56, -58],
-        scale: 2.4, // Clearly marked dwarf planet, larger than Moon 1.8 in visual scale
+        pos: [182, 58, -65],
+        scale: 10.1, // Visual scale 14 (> Moon 10 in visual scale)
         axialTiltDeg: 122.53, // Retrograde
         isRetrograde: true,
         rotationRate: -0.010,
@@ -856,45 +938,65 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     scene.add(stormParticles);
 
     // ==========================================
-    // PROCEDURAL LUNAR REGOLITH SURFACE & CRATERS
+    // PROCEDURAL SPHERICAL MOON / MARS GLOBE
     // ==========================================
-    const terrainSize = 130;
-    const terrainSegments = 72;
-    const terrainGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainSegments, terrainSegments);
-    terrainGeo.rotateX(-Math.PI / 2);
+    const globeRadius = MOON_ENVIRONMENT_RADIUS; // 38
+    const globeGeo = new THREE.SphereGeometry(globeRadius, 96, 96);
 
-    const pos = terrainGeo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const vx = pos.getX(i);
-      const vz = pos.getZ(i);
-      const distFromCenter = Math.sqrt(vx * vx + vz * vz);
-      
-      let h = 0;
-      if (distFromCenter > 13) {
-        h = Math.sin(vx * 0.09) * Math.cos(vz * 0.09) * 1.8 + Math.sin(vx * 0.035 + vz * 0.035) * 2.8;
-        // Crater rim surrounding the outpost
-        if (distFromCenter > 32 && distFromCenter < 56) {
-          h += Math.sin(((distFromCenter - 32) / 24) * Math.PI) * 5.2;
-        }
+    // Realistic cratering and highlands elevation displacement away from base outpost plateau
+    const globePosAttr = globeGeo.attributes.position;
+    for (let i = 0; i < globePosAttr.count; i++) {
+      const vx = globePosAttr.getX(i);
+      const vy = globePosAttr.getY(i);
+      const vz = globePosAttr.getZ(i);
+
+      // Top polar region (vy > 35.5, radius ~13.5) holds the outpost foundation; keep it smooth
+      if (vy < 35.5) {
+        // Multi-frequency spherical harmonic noise for highlands, maria basins, and crater rims
+        const craterNoise = 
+          Math.sin(vx * 0.35) * Math.cos(vz * 0.35) * 0.38 +
+          Math.sin(vy * 0.28 + vx * 0.15) * 0.25 +
+          Math.sin(vx * 0.8 + vz * 0.8) * 0.12;
+
+        const len = Math.sqrt(vx * vx + vy * vy + vz * vz);
+        const factor = (globeRadius + craterNoise) / len;
+        globePosAttr.setXYZ(i, vx * factor, vy * factor, vz * factor);
       }
-      pos.setY(i, h);
     }
-    terrainGeo.computeVertexNormals();
+    globeGeo.computeVertexNormals();
 
-    const terrainMat = new THREE.MeshStandardMaterial({
-      color: isMoon ? 0x828b96 : 0xa64b2a,
-      roughness: 0.95,
+    const globeMat = new THREE.MeshStandardMaterial({
+      map: isMoon ? getMoonTexture() : getMarsTexture(),
+      bumpMap: isMoon ? getMoonBumpMap() : null,
+      bumpScale: isMoon ? 0.35 : 0.2,
+      roughness: isMoon ? 0.94 : 0.85,
       metalness: 0.05,
-      flatShading: true,
     });
-    const terrain = new THREE.Mesh(terrainGeo, terrainMat);
-    terrain.receiveShadow = true;
-    scene.add(terrain);
+    const globeMesh = new THREE.Mesh(globeGeo, globeMat);
+    globeMesh.position.set(0, -globeRadius, 0);
+    globeMesh.receiveShadow = true;
+    globeMesh.userData = {
+      type: 'planet',
+      planetId: isMoon ? 'moon' : 'mars',
+      title: isMoon ? CELESTIAL_BODIES.moon.name : CELESTIAL_BODIES.mars.name,
+      category: isMoon ? CELESTIAL_BODIES.moon.category : CELESTIAL_BODIES.mars.category,
+    };
+    scene.add(globeMesh);
+    interactiveObjectsRef.current.push(globeMesh);
 
-    // Distant Planetary Mountain Range (Lunar massifs or Martian crater rims)
+    // Moon Globe Billboarded 3D Name Label Sprite
+    const moonLabelSprite = createPlanetLabelSprite(
+      isMoon ? CELESTIAL_BODIES.moon.name : CELESTIAL_BODIES.mars.name,
+      isMoon ? '0.27 Earth • Artemis Outpost' : '1.52 AU • Mars Base'
+    );
+    moonLabelSprite.position.set(0, 14, 0);
+    moonLabelSprite.userData = { ...globeMesh.userData };
+    scene.add(moonLabelSprite);
+    interactiveObjectsRef.current.push(moonLabelSprite);
+
+    // Distant Planetary Mountain Range (Curved along sphere perimeter at dist 28..34)
     const mountainCount = 36;
-    const mountainRadius = 145;
-    const mountainGeo = new THREE.ConeGeometry(18, 22, 5);
+    const mountainGeo = new THREE.ConeGeometry(8, 14, 5);
     const mountainMat = new THREE.MeshStandardMaterial({
       color: isMoon ? 0x64748b : 0x7c2d12,
       roughness: 0.98,
@@ -904,13 +1006,16 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
     for (let m = 0; m < mountainCount; m++) {
       const angle = (m / mountainCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.15;
-      const dist = mountainRadius + (Math.random() - 0.5) * 20;
+      const dist = 28 + (Math.random() - 0.5) * 6;
       const heightScale = 0.6 + Math.random() * 1.3;
       const radiusScale = 0.8 + Math.random() * 0.9;
 
+      const pt = getMoonSurfacePoint(Math.cos(angle) * dist, Math.sin(angle) * dist, globeRadius);
+
       const mountain = new THREE.Mesh(mountainGeo, mountainMat);
       mountain.scale.set(radiusScale, heightScale, radiusScale);
-      mountain.position.set(Math.cos(angle) * dist, (22 * heightScale) / 2 - 2, Math.sin(angle) * dist);
+      mountain.position.set(Math.cos(angle) * dist, pt.y + (14 * heightScale) * 0.45, Math.sin(angle) * dist);
+      mountain.quaternion.copy(pt.quaternion);
       mountain.rotation.y = Math.random() * Math.PI;
       scene.add(mountain);
     }
@@ -936,16 +1041,21 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     dustParticlesRef.current = dustParticles;
     scene.add(dustParticles);
 
-    // Scattered Lunar/Martian Boulders & Rocks
+    // Scattered Lunar/Martian Boulders & Rocks (Anchored to curved surface)
     const rockGeo = new THREE.DodecahedronGeometry(0.8, 1);
     const rockMat = new THREE.MeshStandardMaterial({ color: isMoon ? 0x475569 : 0x7c2d12, roughness: 0.9 });
     for (let r = 0; r < 36; r++) {
       const rock = new THREE.Mesh(rockGeo, rockMat);
       const angle = Math.random() * Math.PI * 2;
-      const dist = 16 + Math.random() * 38;
-      const scale = 0.4 + Math.random() * 1.5;
+      const dist = 14 + Math.random() * 16;
+      const scale = 0.4 + Math.random() * 1.2;
+      const rx = Math.cos(angle) * dist;
+      const rz = Math.sin(angle) * dist;
+      const pt = getMoonSurfacePoint(rx, rz, globeRadius);
+
       rock.scale.set(scale, scale * (0.6 + Math.random() * 0.8), scale);
-      rock.position.set(Math.cos(angle) * dist, scale * 0.4, Math.sin(angle) * dist);
+      rock.position.set(rx, pt.y + scale * 0.4, rz);
+      rock.quaternion.copy(pt.quaternion);
       rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
       rock.castShadow = true;
       rock.receiveShadow = true;
@@ -1040,8 +1150,10 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     scene.add(habLightsGroup);
 
     // 2. ECLSS Water Processing Distillation Tower
+    const waterPt = getMoonSurfacePoint(-7.5, 7.0, MOON_ENVIRONMENT_RADIUS);
     const waterGroup = new THREE.Group();
-    waterGroup.position.set(-8.5, 0, 7.5);
+    waterGroup.position.set(-7.5, waterPt.y, 7.0);
+    waterGroup.quaternion.copy(waterPt.quaternion);
     waterGroup.userData = { type: 'building', buildingType: 'water', title: 'Water Distillation Unit', category: 'Closed-Loop Hydrology' };
     waterRecyclerGroupRef.current = waterGroup;
 
@@ -1085,8 +1197,10 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     scene.add(shelterGroup);
 
     // 4. Artemis Lunar Lander Spacecraft Group
+    const landerPt = getMoonSurfacePoint(18.0, -10.0, MOON_ENVIRONMENT_RADIUS);
     const landerGroup = new THREE.Group();
-    landerGroup.position.set(22, 0.2, -12);
+    landerGroup.position.set(18.0, landerPt.y, -10.0);
+    landerGroup.quaternion.copy(landerPt.quaternion);
     landerGroup.userData = { type: 'building', buildingType: 'lander', title: 'Artemis Lander Spacecraft', category: 'Landing Stage' };
     landerGroupRef.current = landerGroup;
 
@@ -1295,11 +1409,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         const patrolRadius = 2.4;
         const patrolSpeed = 0.25 * speedMult;
         const roverAngle = elapsedTime * patrolSpeed;
-        const baseX = -14;
-        const baseZ = 16;
-        rover.position.x = baseX + Math.cos(roverAngle) * patrolRadius;
-        rover.position.z = baseZ + Math.sin(roverAngle) * patrolRadius;
-        rover.rotation.y = -roverAngle + Math.PI / 2;
+        const baseX = -13;
+        const baseZ = 14;
+        const rx = baseX + Math.cos(roverAngle) * patrolRadius;
+        const rz = baseZ + Math.sin(roverAngle) * patrolRadius;
+        const rpt = getMoonSurfacePoint(rx, rz, MOON_ENVIRONMENT_RADIUS);
+        rover.position.set(rx, rpt.y, rz);
+        rover.quaternion.copy(rpt.quaternion);
+        rover.rotateOnAxis(new THREE.Vector3(0, 1, 0), -roverAngle + Math.PI / 2);
 
         // Animate rover wheels rolling
         const wheels = rover.getObjectByName('rover_wheels');
@@ -1340,7 +1457,11 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       if (astronautsGroupRef.current) {
         astronautsGroupRef.current.children.forEach((astronaut, idx) => {
           const bounce = Math.abs(Math.sin(elapsedTime * 2.8 + idx * 1.6)) * 0.38;
-          astronaut.position.y = bounce;
+          const ax = astronaut.position.x;
+          const az = astronaut.position.z;
+          const apt = getMoonSurfacePoint(ax, az, MOON_ENVIRONMENT_RADIUS);
+          astronaut.position.y = apt.y + bounce;
+          astronaut.quaternion.copy(apt.quaternion);
           
           // Subtle idle arm swing
           const leftArm = astronaut.getObjectByName('leftArm');
@@ -1521,8 +1642,8 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         const diff = initialPinchDist - currentDist;
         initialPinchDist = currentDist;
         mouseStateRef.current.targetDistance = Math.min(
-          95,
-          Math.max(14, mouseStateRef.current.targetDistance + diff * 0.15)
+          500,
+          Math.max(12, mouseStateRef.current.targetDistance + diff * 0.15)
         );
       }
     };
@@ -1540,8 +1661,8 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       mouseStateRef.current.targetDistance = Math.min(
-        95,
-        Math.max(14, mouseStateRef.current.targetDistance + e.deltaY * 0.05)
+        500,
+        Math.max(12, mouseStateRef.current.targetDistance + e.deltaY * 0.08)
       );
     };
 
@@ -1665,8 +1786,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         wing.userData = { type: 'building', buildingType: 'solar', title: `Solar Array Wing ${i + 1}`, category: 'Energy Generation' };
 
         const angle = 0.6 + i * 0.45;
-        const radius = 17 + i * 3.5;
-        wing.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+        const radius = 15 + i * 2.8;
+        const sx = Math.cos(angle) * radius;
+        const sz = Math.sin(angle) * radius;
+        const spt = getMoonSurfacePoint(sx, sz, MOON_ENVIRONMENT_RADIUS);
+        wing.position.set(sx, spt.y, sz);
+        wing.quaternion.copy(spt.quaternion);
 
         // Mast
         const mastGeo = new THREE.CylinderGeometry(0.18, 0.22, 5.5, 12);
@@ -1720,9 +1845,13 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         const gh = new THREE.Group();
         gh.userData = { type: 'building', buildingType: 'greenhouse', title: `Hydroponic Bay ${g + 1}`, category: 'Biomass Agriculture' };
 
-        const angle = -1.2 - g * 0.6;
-        const dist = 16 + g * 3.0;
-        gh.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+        const angle = -1.2 - g * 0.55;
+        const dist = 14 + g * 2.6;
+        const gx = Math.cos(angle) * dist;
+        const gz = Math.sin(angle) * dist;
+        const gpt = getMoonSurfacePoint(gx, gz, MOON_ENVIRONMENT_RADIUS);
+        gh.position.set(gx, gpt.y, gz);
+        gh.quaternion.copy(gpt.quaternion);
 
         // Transparent Dome
         const bioDomeGeo = new THREE.SphereGeometry(3.6, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -1768,8 +1897,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       }
 
       if (infrastructure.radiationShelterLevel >= 1) {
+        const sX = -15.0;
+        const sZ = -7.5;
+        const spt = getMoonSurfacePoint(sX, sZ, MOON_ENVIRONMENT_RADIUS);
         const shelter = new THREE.Group();
-        shelter.position.set(-18, 0, -8);
+        shelter.position.set(sX, spt.y, sZ);
+        shelter.quaternion.copy(spt.quaternion);
         shelter.userData = { type: 'building', buildingType: 'shelter', title: 'Sintered Regolith Vault', category: 'Storm Radiation Vault' };
 
         // Reinforced Sintered Regolith Bunker
@@ -1804,8 +1937,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       const ledColor = chargeRatio > 0.5 ? 0x10b981 : chargeRatio > 0.2 ? 0xf59e0b : 0xef4444;
 
       for (let b = 0; b < totalBatteries; b++) {
+        const bx = 8.5 + b * 2.5;
+        const bz = 8.0;
+        const bpt = getMoonSurfacePoint(bx, bz, MOON_ENVIRONMENT_RADIUS);
         const pod = new THREE.Group();
-        pod.position.set(9 + b * 2.8, 0, 9);
+        pod.position.set(bx, bpt.y, bz);
+        pod.quaternion.copy(bpt.quaternion);
         pod.userData = { type: 'building', buildingType: 'battery', title: `Cryo-Battery Sub-Bank ${b + 1}`, category: 'Energy Storage' };
 
         const podGeo = new THREE.CylinderGeometry(0.9, 1.0, 2.8, 16);
@@ -2025,11 +2162,86 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     audioSystem.playClick();
     const m = mouseStateRef.current;
     switch (view) {
+      case 'lunar_surface':
       case 'orbital':
-        m.targetLookAt.set(0, 2.5, 0);
-        m.rotationX = 0.35;
-        m.rotationY = 0.8;
+        m.targetLookAt.set(0, 2.2, 0);
+        m.rotationX = 0.28;
+        m.rotationY = 0.75;
+        m.targetDistance = 28;
+        break;
+      case 'moon_globe':
+      case 'moon':
+        m.targetLookAt.set(0, -18, 0);
+        m.rotationX = 0.38;
+        m.rotationY = 0.65;
+        m.targetDistance = 115;
+        break;
+      case 'solar_system':
+        // Panoramic view framing the Sun, Moon globe, and all 9 celestial bodies
+        m.targetLookAt.set(18, 62, -88);
+        m.rotationX = 0.32;
+        m.rotationY = 0.05;
+        m.targetDistance = 280;
+        break;
+      case 'sun':
+        m.targetLookAt.set(-165, 85, -60);
+        m.rotationX = 0.38;
+        m.rotationY = 1.95;
+        m.targetDistance = 85;
+        break;
+      case 'mercury':
+        m.targetLookAt.set(-125, 68, -75);
+        m.rotationX = 0.45;
+        m.rotationY = 2.0;
+        m.targetDistance = 32;
+        break;
+      case 'venus':
+        m.targetLookAt.set(-98, 72, -95);
+        m.rotationX = 0.48;
+        m.rotationY = 1.85;
+        m.targetDistance = 38;
+        break;
+      case 'earth':
+        m.targetLookAt.set(-68, 76, -112);
+        m.rotationX = 0.50;
+        m.rotationY = 1.65;
+        m.targetDistance = 42;
+        break;
+      case 'mars':
+        m.targetLookAt.set(-32, 78, -125);
+        m.rotationX = 0.52;
+        m.rotationY = 1.25;
+        m.targetDistance = 36;
+        break;
+      case 'jupiter':
+        m.targetLookAt.set(18, 80, -135);
+        m.rotationX = 0.52;
+        m.rotationY = 0.1;
+        m.targetDistance = 75;
+        break;
+      case 'saturn':
+        m.targetLookAt.set(72, 76, -125);
+        m.rotationX = 0.52;
+        m.rotationY = -0.85;
+        m.targetDistance = 68;
+        break;
+      case 'uranus':
+        m.targetLookAt.set(118, 70, -105);
+        m.rotationX = 0.48;
+        m.rotationY = -1.55;
         m.targetDistance = 48;
+        break;
+      case 'neptune':
+        m.targetLookAt.set(154, 64, -85);
+        m.rotationX = 0.45;
+        m.rotationY = -1.85;
+        m.targetDistance = 46;
+        break;
+      case 'pluto':
+        m.targetLookAt.set(182, 58, -65);
+        m.rotationX = 0.42;
+        m.rotationY = -2.05;
+        m.targetDistance = 28;
         break;
       case 'habitat':
         m.targetLookAt.set(0, 3, 0);
@@ -2050,7 +2262,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         m.targetDistance = 26;
         break;
       case 'lander':
-        m.targetLookAt.set(22, 5, -12);
+        m.targetLookAt.set(18, 5, -10);
         m.rotationX = 0.35;
         m.rotationY = 2.4;
         m.targetDistance = 32;
@@ -2062,82 +2274,15 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         m.targetDistance = 16;
         break;
       case 'water':
-        m.targetLookAt.set(-8.5, 2, 7.5);
+        m.targetLookAt.set(-7.5, 2, 7);
         m.rotationX = 0.32;
         m.rotationY = 0.4;
         m.targetDistance = 18;
         break;
       case 'shelter':
-        m.targetLookAt.set(-18, 2, -8);
+        m.targetLookAt.set(-15, 2, -7.5);
         m.rotationX = 0.35;
         m.rotationY = -2.2;
-        m.targetDistance = 24;
-        break;
-      case 'solar_system':
-        // Panoramic view framing all 9 celestial bodies + Moon along celestial arc
-        m.targetLookAt.set(18, 68, -88);
-        m.rotationX = 0.38;
-        m.rotationY = 0.02;
-        m.targetDistance = 155;
-        break;
-      case 'mercury':
-        m.targetLookAt.set(-110, 58, -60);
-        m.rotationX = 0.45;
-        m.rotationY = 2.1;
-        m.targetDistance = 25;
-        break;
-      case 'venus':
-        m.targetLookAt.set(-88, 62, -78);
-        m.rotationX = 0.48;
-        m.rotationY = 1.9;
-        m.targetDistance = 35;
-        break;
-      case 'earth':
-        m.targetLookAt.set(-62, 66, -92);
-        m.rotationX = 0.50;
-        m.rotationY = 1.7;
-        m.targetDistance = 40;
-        break;
-      case 'moon':
-        m.targetLookAt.set(-50, 70, -88);
-        m.rotationX = 0.52;
-        m.rotationY = 1.6;
-        m.targetDistance = 22;
-        break;
-      case 'mars':
-        m.targetLookAt.set(-28, 72, -104);
-        m.rotationX = 0.52;
-        m.rotationY = 1.3;
-        m.targetDistance = 30;
-        break;
-      case 'jupiter':
-        m.targetLookAt.set(12, 76, -114);
-        m.rotationX = 0.52;
-        m.rotationY = 0.1;
-        m.targetDistance = 58;
-        break;
-      case 'saturn':
-        m.targetLookAt.set(56, 74, -108);
-        m.rotationX = 0.52;
-        m.rotationY = -0.9;
-        m.targetDistance = 56;
-        break;
-      case 'uranus':
-        m.targetLookAt.set(92, 68, -94);
-        m.rotationX = 0.48;
-        m.rotationY = -1.6;
-        m.targetDistance = 42;
-        break;
-      case 'neptune':
-        m.targetLookAt.set(122, 62, -76);
-        m.rotationX = 0.45;
-        m.rotationY = -1.9;
-        m.targetDistance = 42;
-        break;
-      case 'pluto':
-        m.targetLookAt.set(146, 56, -58);
-        m.rotationX = 0.42;
-        m.rotationY = -2.1;
         m.targetDistance = 24;
         break;
     }
@@ -2188,6 +2333,12 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           </span>
         </div>
 
+        {/* Prominent Educational Visual Scale Banner */}
+        <div className="px-2.5 py-1 rounded-lg border bg-amber-950/80 text-amber-300 border-amber-600/50 text-xs font-extrabold flex items-center gap-1.5 backdrop-blur-md">
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span>EDUCATIONAL VISUAL SCALE — NOT TO SCALE</span>
+        </div>
+
         {gameState.activeEvents.some(e => e.type === 'solar_storm' && !e.resolved) && (
           <div className="px-2.5 py-1 rounded-lg border bg-rose-950/90 text-rose-300 border-rose-500/60 text-xs font-bold flex items-center gap-1.5 backdrop-blur-md animate-pulse">
             <ShieldAlert className="w-3.5 h-3.5" />
@@ -2210,58 +2361,84 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         </div>
       )}
 
-      {/* Top Right Controls (Camera Presets & Fullscreen) */}
+      {/* Top Right Controls (Core Presets, Planets, Facilities & Fullscreen) */}
       <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl max-w-[calc(100vw-2rem)] overflow-x-auto">
         
-        {/* Solar System Dedicated Panorama Preset */}
-        <button
-          onClick={() => setPresetView('solar_system')}
-          title="Panoramic Solar System View (All 9 Celestial Bodies & Moon)"
-          className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
-            cameraView === 'solar_system'
-              ? 'bg-gradient-to-r from-sky-400 to-indigo-500 text-slate-950 shadow-md'
-              : 'bg-slate-900 text-sky-400 hover:text-white hover:bg-slate-800 border border-sky-500/30'
-          }`}
-        >
-          <Sparkles className="w-3 h-3 shrink-0" />
-          <span>Solar System</span>
-        </button>
+        {/* Core Camera Presets */}
+        <div className="flex items-center gap-1 pr-1 border-r border-slate-800">
+          <button
+            onClick={() => setPresetView('lunar_surface')}
+            title="Lunar Surface Close View (Astronauts, Habitat & Rover on Curved Horizon)"
+            className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+              cameraView === 'lunar_surface' || cameraView === 'orbital'
+                ? 'bg-sky-500 text-slate-950 shadow-md'
+                : 'bg-slate-900 text-sky-400 hover:text-white hover:bg-slate-800 border border-sky-500/30'
+            }`}
+          >
+            <span>Lunar Surface</span>
+          </button>
 
-        {/* Outpost Preset Selector */}
-        <div className="hidden sm:flex items-center gap-1 mr-1 border-l border-slate-800 pl-1">
-          {(['orbital', 'habitat', 'solar', 'greenhouse', 'water', 'shelter', 'lander', 'rover'] as const).map(preset => (
+          <button
+            onClick={() => setPresetView('moon_globe')}
+            title="Complete Spherical Moon Globe View"
+            className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+              cameraView === 'moon_globe'
+                ? 'bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 shadow-md'
+                : 'bg-slate-900 text-cyan-300 hover:text-white hover:bg-slate-800 border border-cyan-500/30'
+            }`}
+          >
+            <Globe2 className="w-3 h-3 shrink-0" />
+            <span>Moon Globe</span>
+          </button>
+
+          <button
+            onClick={() => setPresetView('solar_system')}
+            title="Panoramic Solar System View (Sun, Moon Globe, and all 9 Planets)"
+            className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+              cameraView === 'solar_system'
+                ? 'bg-gradient-to-r from-amber-400 to-indigo-500 text-slate-950 shadow-md'
+                : 'bg-slate-900 text-amber-300 hover:text-white hover:bg-slate-800 border border-amber-500/30'
+            }`}
+          >
+            <Sparkles className="w-3 h-3 shrink-0" />
+            <span>Solar System</span>
+          </button>
+        </div>
+
+        {/* Planet Presets Quick Selector (Sun + 9 Planets + Moon) */}
+        <div className="hidden lg:flex items-center gap-1 px-1 border-r border-slate-800">
+          {(['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'] as const).map(bodyId => (
+            <button
+              key={bodyId}
+              onClick={() => {
+                setPresetView(bodyId);
+                setSelectedPlanet(CELESTIAL_BODIES[bodyId]);
+              }}
+              title={`Focus ${CELESTIAL_BODIES[bodyId]?.name || bodyId}`}
+              className={`px-1.5 py-1 rounded-md text-[9px] font-bold uppercase transition ${
+                cameraView === bodyId
+                  ? 'bg-amber-400 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              {bodyId === 'sun' ? 'Sun' : bodyId === 'pluto' ? 'Pluto' : bodyId}
+            </button>
+          ))}
+        </div>
+
+        {/* Outpost Facilities Selector */}
+        <div className="hidden sm:flex items-center gap-1 pr-1 border-r border-slate-800">
+          {(['habitat', 'solar', 'greenhouse', 'water', 'shelter', 'lander', 'rover'] as const).map(preset => (
             <button
               key={preset}
               onClick={() => setPresetView(preset)}
-              className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase transition ${
+              className={`px-1.5 py-1 rounded-md text-[9px] font-bold uppercase transition ${
                 cameraView === preset
                   ? 'bg-sky-500 text-slate-950 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
               {preset}
-            </button>
-          ))}
-        </div>
-
-        {/* Planet Presets Divider & Quick Selector (All 9 Celestial Bodies + Moon) */}
-        <div className="hidden lg:flex items-center gap-1 pl-1 border-l border-slate-800 mr-1">
-          <Globe2 className="w-3 h-3 text-sky-400 ml-1 shrink-0" />
-          {(['mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'] as const).map(planet => (
-            <button
-              key={planet}
-              onClick={() => {
-                setPresetView(planet);
-                setSelectedPlanet(CELESTIAL_BODIES[planet]);
-              }}
-              title={`Focus ${CELESTIAL_BODIES[planet]?.name || planet}`}
-              className={`px-1.5 py-1 rounded-md text-[9px] font-bold uppercase transition ${
-                cameraView === planet
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              {planet === 'pluto' ? 'Pluto (Dwarf)' : planet}
             </button>
           ))}
         </div>
@@ -2309,8 +2486,8 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
         {/* Reset Camera Orbit */}
         <button
-          onClick={() => setPresetView('orbital')}
-          title="Reset Orbit Camera"
+          onClick={() => setPresetView('lunar_surface')}
+          title="Reset Surface Camera"
           className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
         >
           <RotateCw className="w-4 h-4" />
@@ -2339,7 +2516,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         <div className="flex items-center gap-1.5">
           <span className="hidden md:inline-flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded-full bg-amber-950/70 border border-amber-800/60 text-amber-300">
             <Sparkles className="w-2.5 h-2.5 text-amber-400" />
-            Visual Scale: Exaggerated for celestial educational visibility
+            EDUCATIONAL VISUAL SCALE — NOT TO SCALE
           </span>
           <div className="font-mono text-slate-300 hidden xl:flex items-center gap-2">
             <span>Arrays: {gameState.infrastructure.solarArrays}</span>

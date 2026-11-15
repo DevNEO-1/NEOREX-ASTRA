@@ -1,4 +1,5 @@
 export type CelestialBodyId = 
+  | 'sun'
   | 'mercury'
   | 'venus'
   | 'earth'
@@ -29,6 +30,27 @@ export interface CelestialBodyInfo {
 }
 
 export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
+  sun: {
+    id: 'sun',
+    name: 'The Sun (Sol)',
+    category: 'G-Type Main-Sequence Star (Yellow Dwarf)',
+    tagline: 'Gravitational anchor and stellar furnace providing light, heat, and life to the Solar System.',
+    diameterKm: '1,392,700 km (109.3 Earths)',
+    gravityMps2: '274.0 m/s² (27.9 g)',
+    dayLength: '25 Earth days (equator) to 35 days (poles)',
+    temperatureRange: '5,500°C (photosphere) to 15,000,000°C (core)',
+    atmosphere: '73.46% H₂, 24.85% He, 0.77% O₂, 0.29% C (Solar Corona)',
+    distanceFromSun: '0 km (Center of Solar System)',
+    moonsCount: '8 Planets, 5 Dwarf Planets, millions of asteroids & comets',
+    campaignAvailability: 'future',
+    campaignStatusText: 'Primary Solar Power & Radiation Source',
+    nasaFacts: [
+      'The Sun contains 99.86% of the entire mass of the solar system, converting 600 million tons of hydrogen into helium every second via core thermonuclear fusion.',
+      'Coronal Mass Ejections (CMEs) and high-energy solar particle events drive space weather, requiring radiation shielding on lunar and Martian outposts.',
+      'Photons born in the solar core take over 100,000 years to diffuse through the radiative zone, then traverse space to reach the Moon in only 8.3 minutes.',
+    ],
+    colorAccent: '#f59e0b',
+  },
   earth: {
     id: 'earth',
     name: 'Earth (Terra)',

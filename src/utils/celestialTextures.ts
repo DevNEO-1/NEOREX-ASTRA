@@ -772,6 +772,103 @@ export function getPlutoTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+/**
+ * Creates procedural high-detail Sun photosphere texture.
+ * Features boiling granulation cells, solar flares/prominences, magnetic active plages,
+ * and realistic sunspots with dark umbra and penumbra halos.
+ */
+export function getSunTexture(): THREE.CanvasTexture {
+  if (textureCache.has('sun')) return textureCache.get('sun')!;
+
+  const width = 1024;
+  const height = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  if (ctx) {
+    // 1. Base Solar Plasma (Deep orange to blazing golden-yellow)
+    const baseGrad = ctx.createLinearGradient(0, 0, 0, height);
+    baseGrad.addColorStop(0.0, '#c2410c'); // Deep orange polar limb
+    baseGrad.addColorStop(0.2, '#f97316');
+    baseGrad.addColorStop(0.5, '#fbbf24'); // Brilliant golden equator
+    baseGrad.addColorStop(0.8, '#f97316');
+    baseGrad.addColorStop(1.0, '#c2410c');
+    ctx.fillStyle = baseGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Convective Granulation Cells (Millions of boiling plasma convection cells)
+    for (let i = 0; i < 600; i++) {
+      const cx = Math.random() * width;
+      const cy = Math.random() * height;
+      const rx = 4 + Math.random() * 12;
+      const ry = 3 + Math.random() * 8;
+      const shade = Math.random() > 0.45 ? 'rgba(254, 240, 138, 0.35)' : 'rgba(234, 88, 12, 0.28)';
+      ctx.fillStyle = shade;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, Math.random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 3. Bright Active Plages / Magnetic Faculae
+    for (let p = 0; p < 45; p++) {
+      const px = Math.random() * width;
+      const py = height * 0.25 + Math.random() * (height * 0.5);
+      const pr = 15 + Math.random() * 35;
+      const plageGrad = ctx.createRadialGradient(px, py, 2, px, py, pr);
+      plageGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.85)');
+      plageGrad.addColorStop(0.4, 'rgba(254, 249, 195, 0.55)');
+      plageGrad.addColorStop(1.0, 'rgba(251, 191, 36, 0.0)');
+      ctx.fillStyle = plageGrad;
+      ctx.beginPath();
+      ctx.arc(px, py, pr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. Realistic Sunspot Groups (Cooler magnetic regions: dark umbra + warm penumbra)
+    const sunspots = [
+      { x: width * 0.28, y: height * 0.42, r: 12 },
+      { x: width * 0.32, y: height * 0.45, r: 8 },
+      { x: width * 0.65, y: height * 0.38, r: 16 },
+      { x: width * 0.69, y: height * 0.41, r: 10 },
+      { x: width * 0.73, y: height * 0.37, r: 7 },
+      { x: width * 0.84, y: height * 0.58, r: 11 },
+    ];
+
+    sunspots.forEach((spot) => {
+      // Penumbra (warm dark brown halo)
+      ctx.fillStyle = '#7c2d12';
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, spot.r * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Umbra (dark near-black magnetic core)
+      ctx.fillStyle = '#451a03';
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, spot.r * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // 5. Plasma Filament Ribbons (Curving magnetic arcs)
+    ctx.strokeStyle = 'rgba(254, 215, 170, 0.4)';
+    ctx.lineWidth = 3;
+    for (let f = 0; f < 8; f++) {
+      const fx = Math.random() * width;
+      const fy = height * 0.3 + Math.random() * (height * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.quadraticCurveTo(fx + 40, fy - 25, fx + 80, fy + 10);
+      ctx.stroke();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set('sun', texture);
+  return texture;
+}
+
 // Internal drawing helpers for realistic procedural noise
 function drawLunarCrater(
   ctx: CanvasRenderingContext2D,

@@ -398,11 +398,11 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
   });
 
   describe('5. Realistic Cinematic Space World & Celestial Interactions', () => {
-    it('verifies celestial bodies catalog contains all 9 celestial bodies plus Moon with NASA facts and Pluto clearly designated as dwarf planet', async () => {
+    it('verifies celestial bodies catalog contains the Sun, all 9 celestial bodies, plus Moon with NASA facts and Pluto clearly designated as dwarf planet', async () => {
       const { CELESTIAL_BODIES } = await import('../src/data/celestialBodies');
 
-      // Verify all 10 bodies exist in catalog
-      const requiredBodies = ['mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'];
+      // Verify all 11 bodies exist in catalog
+      const requiredBodies = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'];
       requiredBodies.forEach(id => {
         expect(CELESTIAL_BODIES[id], `Missing celestial body ${id}`).toBeDefined();
         expect(CELESTIAL_BODIES[id].name.length).toBeGreaterThan(0);
@@ -410,6 +410,12 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
         expect(CELESTIAL_BODIES[id].diameterKm).toBeDefined();
         expect(CELESTIAL_BODIES[id].colorAccent).toBeDefined();
       });
+
+      // The Sun (Sol) telemetry & nuclear fusion facts
+      expect(CELESTIAL_BODIES.sun.diameterKm).toContain('1,392,700 km');
+      expect(CELESTIAL_BODIES.sun.gravityMps2).toContain('274.0');
+      expect(CELESTIAL_BODIES.sun.category).toContain('G-Type');
+      expect(CELESTIAL_BODIES.sun.nasaFacts[0]).toContain('99.86%');
 
       // Earth telemetry & active campaign status
       expect(CELESTIAL_BODIES.earth.diameterKm).toBe('12,742 km');
@@ -444,20 +450,21 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(CELESTIAL_BODIES.pluto.nasaFacts[1]).toContain('Sputnik Planitia');
     });
 
-    it('verifies visual scale hierarchy ensuring every planet and Pluto appears larger than the Moon, with Jupiter and Saturn as largest gas giants', () => {
-      // Scale hierarchy in visual scale mode:
-      // Moon (1.8) < Pluto (2.4) < Mercury (2.8) < Mars (3.6) < Venus (4.8) < Earth (5.2) < Neptune (5.4) < Uranus (5.6) < Saturn (7.6) < Jupiter (9.2)
+    it('verifies visual scale hierarchy ensuring every planet and Pluto appears larger than the Moon, with Jupiter, Saturn, and Sun as largest celestial bodies', () => {
+      // Visual scale hierarchy in educational scale mode:
+      // Moon (10) < Pluto (14) < Mercury (16) < Mars (19) < Venus (22) < Earth (25) < Neptune (27) < Uranus (29) < Saturn (40) < Jupiter (48) < Sun (75)
       const visualScales = {
-        moon: 1.8,
-        pluto: 2.4,
-        mercury: 2.8,
-        mars: 3.6,
-        venus: 4.8,
-        earth: 5.2,
-        neptune: 5.4,
-        uranus: 5.6,
-        saturn: 7.6,
-        jupiter: 9.2,
+        moon: 10,
+        pluto: 14,
+        mercury: 16,
+        mars: 19,
+        venus: 22,
+        earth: 25,
+        neptune: 27,
+        uranus: 29,
+        saturn: 40,
+        jupiter: 48,
+        sun: 75,
       };
 
       // Every planet and Pluto is strictly larger than the Moon
@@ -466,11 +473,34 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
         expect(visualScales[id]).toBeGreaterThan(visualScales.moon);
       });
 
-      // Gas giants Jupiter and Saturn are visually impressive and largest
+      // Gas giants Jupiter and Saturn are visually impressive and larger than terrestrial worlds
       expect(visualScales.jupiter).toBeGreaterThan(visualScales.earth);
       expect(visualScales.saturn).toBeGreaterThan(visualScales.earth);
-      expect(visualScales.jupiter).toBe(9.2);
-      expect(visualScales.saturn).toBe(7.6);
+      expect(visualScales.jupiter).toBe(48);
+      expect(visualScales.saturn).toBe(40);
+
+      // The Sun is the grandest stellar object in the solar system
+      expect(visualScales.sun).toBeGreaterThan(visualScales.jupiter);
+      expect(visualScales.sun).toBe(75);
+    });
+
+    it('computes exact spherical Moon surface point, elevation drop, and local surface normal', async () => {
+      const { getMoonSurfacePoint, MOON_ENVIRONMENT_RADIUS } = await import('../src/components/OutpostScene3D');
+      expect(MOON_ENVIRONMENT_RADIUS).toBe(38);
+
+      // At polar center (0, 0)
+      const centerPt = getMoonSurfacePoint(0, 0, 38);
+      expect(centerPt.y).toBeCloseTo(0, 3); // Polar top surface is at y = 0
+      expect(centerPt.normal.x).toBeCloseTo(0, 3);
+      expect(centerPt.normal.y).toBeCloseTo(1, 3);
+      expect(centerPt.normal.z).toBeCloseTo(0, 3);
+
+      // At perimeter (x = 14, z = 0)
+      const perimeterPt = getMoonSurfacePoint(14, 0, 38);
+      expect(perimeterPt.y).toBeLessThan(0); // Surface curves downward along spherical arc
+      expect(perimeterPt.y).toBeCloseTo(Math.sqrt(38 * 38 - 14 * 14) - 38, 2);
+      expect(perimeterPt.normal.x).toBeGreaterThan(0);
+      expect(perimeterPt.normal.y).toBeLessThan(1);
     });
 
     it('verifies accurate NASA axial tilts and retrograde spin designations', () => {
