@@ -18,7 +18,7 @@ export function loadConfig(): ServerConfig {
     port: parseInt(process.env.PORT || '3001', 10),
     host: process.env.HOST || '0.0.0.0',
     geminiApiKey: process.env.GEMINI_API_KEY,
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
     nodeEnv: process.env.NODE_ENV || 'development',
     allowedOrigins,
   };

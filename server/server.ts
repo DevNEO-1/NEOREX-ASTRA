@@ -60,6 +60,7 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
       model: config.geminiModel,
       nodeVersion: process.version,
       timestamp: new Date().toISOString(),
+      lastUpstreamDiagnosis: astraService.getLastUpstreamDiagnosis(),
     });
   });
 

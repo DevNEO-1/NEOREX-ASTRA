@@ -4,9 +4,19 @@ import { ServerConfig } from './config.js';
 import { reviewAiResponseSafety } from './safetyReviewer.js';
 import { generateDeterministicFallback } from './fallbackGenerator.js';
 
+export interface SafeUpstreamDiagnosis {
+  errorName: string;
+  httpStatus: number;
+  googleErrorCode?: string | number;
+  googleErrorStatus?: string;
+  sanitizedMessage: string;
+  timestamp: string;
+}
+
 export class DrAstraService {
   private aiClient: GoogleGenAI | null = null;
   private config: ServerConfig;
+  private lastUpstreamDiagnosis: SafeUpstreamDiagnosis | null = null;
 
   constructor(config: ServerConfig, mockClient?: GoogleGenAI) {
     this.config = config;
@@ -15,6 +25,10 @@ export class DrAstraService {
     } else if (config.geminiApiKey) {
       this.aiClient = new GoogleGenAI({ apiKey: config.geminiApiKey });
     }
+  }
+
+  public getLastUpstreamDiagnosis(): SafeUpstreamDiagnosis | null {
+    return this.lastUpstreamDiagnosis;
   }
 
   /**
@@ -137,17 +151,67 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
     let isAbandoned = false;
 
     try {
-      // 1. Initiate GenAI call with client abortSignal
-      const generatePromise = this.aiClient.models.generateContent({
-        model: this.config.geminiModel,
-        contents: contextTelemetryPrompt,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.7,
-          maxOutputTokens: 256,
-          abortSignal: abortController.signal,
-        },
-      });
+      // 1. Initiate Gemini call with client abortSignal: prefer Interactions API if available, fallback to models.generateContent
+      const generatePromise = (async (): Promise<string> => {
+        if (!this.aiClient) return '';
+
+        // If client supports Interactions API (recommended for gemini-3.8-flash)
+        if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
+          const interaction = await (this.aiClient as any).interactions.create({
+            model: this.config.geminiModel,
+            input: contextTelemetryPrompt,
+            system_instruction: systemPrompt,
+            generation_config: {
+              temperature: 0.7,
+              max_output_tokens: 256,
+            },
+            store: false,
+          }, {
+            fetch_options: {
+              signal: abortController.signal,
+            },
+            timeout_ms: timeoutMs,
+          });
+
+          if (interaction?.output_text) {
+            return String(interaction.output_text);
+          }
+          if (Array.isArray(interaction?.steps)) {
+            let extracted = '';
+            for (const step of interaction.steps) {
+              if (step && (step.type === 'model_output' || step.event_type === 'model_output') && step.output) {
+                if (typeof step.output === 'string') {
+                  extracted += step.output;
+                } else if (Array.isArray(step.output)) {
+                  for (const part of step.output) {
+                    if (typeof part === 'string') extracted += part;
+                    else if (part && typeof part.text === 'string') extracted += part.text;
+                  }
+                }
+              }
+            }
+            if (extracted) return extracted;
+          }
+          return '';
+        }
+
+        // Fallback to models.generateContent (e.g. for mock clients or older SDK interfaces)
+        if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
+          const response = await (this.aiClient as any).models.generateContent({
+            model: this.config.geminiModel,
+            contents: contextTelemetryPrompt,
+            config: {
+              systemInstruction: systemPrompt,
+              temperature: 0.7,
+              maxOutputTokens: 256,
+              abortSignal: abortController.signal,
+            },
+          });
+          return response?.text || '';
+        }
+
+        return '';
+      })();
 
       // 2. Set timeout race with safe abandonment tracking
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -163,7 +227,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         }, timeoutMs);
       });
 
-      const response = await Promise.race([generatePromise, timeoutPromise]);
+      const rawResponseText = await Promise.race([generatePromise, timeoutPromise]);
       
       // Clean up timer on successful resolution
       if (timerId !== null) {
@@ -172,11 +236,11 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       }
 
       // Guard against race conditions if resolution happened after abandonment
-      if (isAbandoned) {
+      if (isAbandoned || !rawResponseText) {
         return this.generateDeterministicFallback(payload);
       }
 
-      const responseText = response.text || '';
+      const responseText = rawResponseText;
       const safetyReview = reviewAiResponseSafety(responseText);
 
       // If review fails, substitute fallback and set isFallback: true
@@ -210,10 +274,42 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       }
 
       const errMsg = err instanceof Error ? err.message : String(err);
+      const errName = err instanceof Error ? (err.name || err.constructor.name) : 'UnknownError';
+      const errStatus = typeof (err as { status?: number })?.status === 'number' ? (err as { status: number }).status : undefined;
+
+      // Sanitize potential credentials/tokens from error string
+      const sanitizedError = errMsg
+        .replace(/AIza[0-9A-Za-z-_]{35}/g, '[REDACTED_API_KEY]')
+        .replace(/key=[^&\s]+/g, 'key=[REDACTED]');
+
+      let googleErrorCode: string | number | undefined = undefined;
+      let googleErrorStatus: string | undefined = undefined;
+      try {
+        const parsed = JSON.parse(errMsg);
+        if (parsed?.error) {
+          if (parsed.error.code) googleErrorCode = parsed.error.code;
+          if (parsed.error.status) googleErrorStatus = parsed.error.status;
+          if (Array.isArray(parsed.error.details) && parsed.error.details[0]?.reason) {
+            googleErrorCode = parsed.error.details[0].reason;
+          }
+        }
+      } catch {
+        // Not JSON
+      }
+
+      this.lastUpstreamDiagnosis = {
+        errorName: errName,
+        httpStatus: typeof errStatus === 'number' ? errStatus : 500,
+        googleErrorCode,
+        googleErrorStatus,
+        sanitizedMessage: sanitizedError,
+        timestamp: new Date().toISOString(),
+      };
+
       if (errMsg === 'GEMINI_UPSTREAM_TIMEOUT' || isAbandoned) {
         console.warn('DrAstraService: Upstream Gemini call timed out. Operation aborted and safely abandoned; serving educational fallback.');
       } else {
-        console.warn(`DrAstraService: Gemini API call failed (${errMsg}). Serving deterministic educational fallback.`);
+        console.warn(`DrAstraService: Gemini API call failed [${errName}${errStatus ? ` status=${errStatus}` : ''}]: ${sanitizedError}. Serving deterministic educational fallback.`);
       }
       return this.generateDeterministicFallback(payload);
     }

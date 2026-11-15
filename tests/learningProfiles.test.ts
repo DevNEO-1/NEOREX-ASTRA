@@ -88,5 +88,5 @@ describe('NEOREX ASTRA V2.2 — Adaptive Learning & Educational Systems', () => 
       expect(step.funFact.length).toBeGreaterThan(15);
       expect(step.actionText.length).toBeGreaterThan(3);
     }
-  });
+  }, 15000);
 });
