@@ -123,7 +123,7 @@ LANGUAGE GUIDELINES:
    *   Any late-resolving promises from upstream are strictly discarded and prevented from mutating
    *   or affecting client responses.
    */
-  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 12000): Promise<ChatSuccessResponse> {
+  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 25000): Promise<ChatSuccessResponse> {
     const { message, learningProfile, campaign, currentObjective, simulationContext } = payload;
     const systemPrompt = this.buildSystemInstruction(learningProfile, campaign);
 
@@ -167,6 +167,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               generation_config: {
                 temperature: 0.7,
                 max_output_tokens: 256,
+                thinking_level: 'minimal',
               },
               automatic_continuation: false,
               store: false,
@@ -207,6 +208,9 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               systemInstruction: systemPrompt,
               temperature: 0.7,
               maxOutputTokens: 256,
+              thinkingConfig: {
+                thinkingBudget: 0,
+              },
               abortSignal: abortController.signal,
             },
           });
