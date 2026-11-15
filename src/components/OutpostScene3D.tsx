@@ -256,6 +256,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   onSelectAstronaut,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const presetBarRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cameraView, setCameraView] = useState<CameraPresetView>('orbital');
   const [hoveredEntity, setHoveredEntity] = useState<{ title: string; category: string } | null>(null);
@@ -272,6 +273,16 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   selectedPlanetRef.current = selectedPlanet;
   const isSimulationPausedRef = useRef<boolean>(false);
   isSimulationPausedRef.current = isSimulationPaused;
+
+  // Auto-scroll active preset into view on mobile / tablet horizontal scroll
+  useEffect(() => {
+    if (presetBarRef.current) {
+      const activeBtn = presetBarRef.current.querySelector<HTMLElement>('[data-active="true"]');
+      if (activeBtn) {
+        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+  }, [cameraView]);
 
   // Scene references
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -2459,52 +2470,15 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
   return (
     <div className={`relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 transition-all ${
-      isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'w-full h-80 sm:h-96 md:h-[440px]'
+      isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'w-full h-80 sm:h-96 md:h-[520px] lg:h-[580px]'
     }`}>
       
       {/* 3D WebGL Canvas Container */}
       <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
-      {/* Top Left HUD Telemetry Overlay */}
-      <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2 pointer-events-none">
-        <div className="bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs flex items-center gap-2 shadow-2xl">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span className="font-extrabold text-white tracking-wider">3D CELESTIAL & OUTPOST VIEWPORT</span>
-          <span className="text-[10px] text-slate-400 font-mono">
-            {gameState.campaign === 'moon' ? 'Shackleton Crater Rim • Moon' : 'Acidalia Planitia • Mars'}
-          </span>
-        </div>
-
-        <div className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md ${
-          isNight
-            ? 'bg-slate-900/90 text-indigo-300 border-indigo-500/40'
-            : 'bg-slate-900/90 text-amber-300 border-amber-500/40'
-        }`}>
-          {isNight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
-          <span>
-            {gameState.campaign === 'moon'
-              ? (isNight ? 'Lunar Night (Earthlight Only)' : 'Solar Daylight Active')
-              : (isNight ? 'Martian Sol Night (Phobos/Deimos Sky)' : 'Martian Sol Daylight (Dust Optical Depth)')}
-          </span>
-        </div>
-
-        {/* Prominent Educational Visual Scale Banner */}
-        <div className="px-2.5 py-1 rounded-lg border bg-amber-950/80 text-amber-300 border-amber-600/50 text-xs font-extrabold flex items-center gap-1.5 backdrop-blur-md">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-          <span>EDUCATIONAL VISUAL SCALE — NOT TO SCALE</span>
-        </div>
-
-        {gameState.activeEvents.some(e => e.type === 'solar_storm' && !e.resolved) && (
-          <div className="px-2.5 py-1 rounded-lg border bg-rose-950/90 text-rose-300 border-rose-500/60 text-xs font-bold flex items-center gap-1.5 backdrop-blur-md animate-pulse">
-            <ShieldAlert className="w-3.5 h-3.5" />
-            <span>CRITICAL: SOLAR PARTICLE STORM</span>
-          </div>
-        )}
-      </div>
-
       {/* Hovered Entity Floating Crosshair Tooltip */}
       {hoveredEntity && (
-        <div className="absolute top-14 left-3 pointer-events-none bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-700 shadow-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-100">
+        <div className="absolute bottom-14 left-3 pointer-events-none z-30 bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-700 shadow-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-100">
           <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
           <div>
             <div className="text-[10px] font-mono text-sky-400 uppercase font-bold tracking-wider">{hoveredEntity.category}</div>
@@ -2516,206 +2490,276 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         </div>
       )}
 
-      {/* Top Right Controls (Core Presets, Planets, Facilities & Fullscreen) */}
-      <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl max-w-[calc(100vw-2rem)] overflow-x-auto">
+      {/* Unified Full-Width Responsive Header Overlay */}
+      <div className="absolute top-2 sm:top-3 left-2 sm:left-3 right-2 sm:right-3 flex flex-col gap-2 pointer-events-none z-20">
         
-        {/* Core Camera Presets */}
-        <div className="flex items-center gap-1 pr-1 border-r border-slate-800">
-          <button
-            onClick={() => setPresetView('lunar_surface')}
-            title="Lunar Surface Close View (Astronauts, Habitat & Rover on Curved Horizon)"
-            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
-              cameraView === 'lunar_surface' || cameraView === 'orbital'
-                ? 'bg-sky-500 text-slate-950 shadow-md'
-                : 'bg-slate-900 text-sky-400 hover:text-white hover:bg-slate-800 border border-sky-500/30'
-            }`}
-          >
-            <span>Lunar Surface</span>
-          </button>
+        {/* Row 1: Left HUD Status Badges & Right Dedicated Action Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+          {/* Left Status Badges */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
+            <div className="bg-slate-950/90 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-slate-700/80 text-xs flex items-center gap-2 shadow-2xl">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+              <span className="font-extrabold text-white tracking-wider text-[11px] sm:text-xs">3D CELESTIAL & OUTPOST VIEWPORT</span>
+              <span className="hidden sm:inline text-[10px] text-slate-400 font-mono">
+                {gameState.campaign === 'moon' ? 'Shackleton Crater Rim • Moon' : 'Acidalia Planitia • Mars'}
+              </span>
+            </div>
 
-          <button
-            onClick={() => setPresetView('moon_globe')}
-            title="Complete Spherical Moon Globe View"
-            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
-              cameraView === 'moon_globe'
-                ? 'bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 shadow-md'
-                : 'bg-slate-900 text-cyan-300 hover:text-white hover:bg-slate-800 border border-cyan-500/30'
-            }`}
-          >
-            <Globe2 className="w-3 h-3 shrink-0" />
-            <span>Moon Globe</span>
-          </button>
+            <div className={`px-2.5 py-1 rounded-lg border text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md ${
+              isNight
+                ? 'bg-slate-900/90 text-indigo-300 border-indigo-500/40'
+                : 'bg-slate-900/90 text-amber-300 border-amber-500/40'
+            }`}>
+              {isNight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">
+                {gameState.campaign === 'moon'
+                  ? (isNight ? 'Lunar Night (Earthlight Only)' : 'Solar Daylight Active')
+                  : (isNight ? 'Martian Sol Night' : 'Martian Sol Daylight')}
+              </span>
+              <span className="sm:hidden">{isNight ? 'Night' : 'Day'}</span>
+            </div>
 
-          <button
-            onClick={() => setPresetView('solar_system')}
-            title="Panoramic Solar System View (Sun, Moon Globe, and all 9 Planets)"
-            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
-              cameraView === 'solar_system'
-                ? 'bg-gradient-to-r from-amber-400 to-indigo-500 text-slate-950 shadow-md'
-                : 'bg-slate-900 text-amber-300 hover:text-white hover:bg-slate-800 border border-amber-500/30'
-            }`}
-          >
-            <Sparkles className="w-3 h-3 shrink-0" />
-            <span>Solar System</span>
-          </button>
+            <div className="px-2.5 py-1 rounded-lg border bg-amber-950/80 text-amber-300 border-amber-600/50 text-[10px] sm:text-xs font-extrabold flex items-center gap-1.5 backdrop-blur-md">
+              <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+              <span className="hidden sm:inline">EDUCATIONAL VISUAL SCALE — NOT TO SCALE</span>
+              <span className="sm:hidden">VISUAL SCALE</span>
+            </div>
 
-          <button
-            onClick={() => setPresetView('inner_planets')}
-            title="Inner Planets View (Mercury through Mars & Sun)"
-            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
-              cameraView === 'inner_planets'
-                ? 'bg-amber-400 text-slate-950 shadow-md'
-                : 'bg-slate-900 text-amber-400 hover:text-white hover:bg-slate-800 border border-amber-500/30'
-            }`}
-          >
-            <span>Inner</span>
-          </button>
+            {gameState.activeEvents.some(e => e.type === 'solar_storm' && !e.resolved) && (
+              <div className="px-2.5 py-1 rounded-lg border bg-rose-950/90 text-rose-300 border-rose-500/60 text-xs font-bold flex items-center gap-1.5 backdrop-blur-md animate-pulse">
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>SOLAR STORM</span>
+              </div>
+            )}
+          </div>
 
-          <button
-            onClick={() => setPresetView('outer_planets')}
-            title="Outer Planets View (Jupiter, Saturn, Uranus, Neptune, Pluto)"
-            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
-              cameraView === 'outer_planets'
-                ? 'bg-indigo-400 text-slate-950 shadow-md'
-                : 'bg-slate-900 text-indigo-400 hover:text-white hover:bg-slate-800 border border-indigo-500/30'
-            }`}
-          >
-            <span>Outer</span>
-          </button>
-
-          <button
-            onClick={() => {
-              const focusId = selectedPlanet?.id || 'saturn';
-              setSelectedPlanet(CELESTIAL_BODIES[focusId]);
-              setPresetView('planet_focus');
-            }}
-            title="Planet Focus View (Track Selected Planet)"
-            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
-              cameraView === 'planet_focus'
-                ? 'bg-pink-500 text-slate-950 shadow-md'
-                : 'bg-slate-900 text-pink-400 hover:text-white hover:bg-slate-800 border border-pink-500/30'
-            }`}
-          >
-            <span>Focus</span>
-          </button>
-        </div>
-
-        {/* Planet Presets Quick Selector (Sun + 9 Planets + Moon) */}
-        <div className="hidden lg:flex items-center gap-1 px-1 border-r border-slate-800">
-          {(['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'] as const).map(bodyId => (
+          {/* Right Dedicated Action Controls Toolbar */}
+          <div className="flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md p-1 sm:p-1.5 rounded-xl border border-slate-700/80 shadow-2xl pointer-events-auto shrink-0 ml-auto">
+            {/* Toggle Rotation Axes Control */}
             <button
-              key={bodyId}
               onClick={() => {
-                setPresetView(bodyId);
-                setSelectedPlanet(CELESTIAL_BODIES[bodyId]);
+                const next = !showAxes;
+                setShowAxes(next);
+                showAxesRef.current = next;
+                axesGroupsRef.current.forEach(g => {
+                  g.visible = next;
+                });
+                audioSystem.playClick();
               }}
-              title={`Focus ${CELESTIAL_BODIES[bodyId]?.name || bodyId}`}
-              className={`px-1.5 py-1 rounded-md text-[9px] font-bold uppercase transition ${
-                cameraView === bodyId
-                  ? 'bg-amber-400 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              title={showAxes ? 'Hide Planetary Rotation Axes' : 'Show Planetary Rotation Axes & Directional Indicators'}
+              className={`px-2 py-1 rounded-lg transition flex items-center gap-1 text-[10px] font-bold ${
+                showAxes
+                  ? 'bg-cyan-950/90 text-cyan-300 border border-cyan-500/70 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              {bodyId === 'sun' ? 'Sun' : bodyId === 'pluto' ? 'Pluto' : bodyId}
+              <Compass className="w-3.5 h-3.5 shrink-0" />
+              <span>AXES: {showAxes ? 'ON' : 'OFF'}</span>
             </button>
-          ))}
-        </div>
 
-        {/* Outpost Facilities Selector */}
-        <div className="hidden sm:flex items-center gap-1 pr-1 border-r border-slate-800">
-          {(['habitat', 'solar', 'greenhouse', 'water', 'shelter', 'lander', 'rover'] as const).map(preset => (
+            {/* Toggle Cinematic Tour Mode */}
             <button
-              key={preset}
-              onClick={() => setPresetView(preset)}
-              className={`px-1.5 py-1 rounded-md text-[9px] font-bold uppercase transition ${
-                cameraView === preset
-                  ? 'bg-sky-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              onClick={() => {
+                const next = !isCinematicTour;
+                setIsCinematicTour(next);
+                isCinematicTourRef.current = next;
+                audioSystem.playClick();
+              }}
+              title={isCinematicTour ? 'Pause Cinematic Orbit Tour' : 'Start Cinematic Auto-Panning Tour'}
+              className={`px-2 py-1 rounded-lg transition flex items-center gap-1 text-[10px] font-bold ${
+                isCinematicTour
+                  ? 'bg-purple-950/90 text-purple-300 border border-purple-500/70 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              {preset}
+              <Film className="w-3.5 h-3.5 shrink-0" />
+              <span>{isCinematicTour ? 'TOUR: ON' : 'TOUR'}</span>
             </button>
-          ))}
+
+            {/* Toggle Orbital Simulation Pause / Resume */}
+            <button
+              onClick={() => {
+                const next = !isSimulationPaused;
+                setIsSimulationPaused(next);
+                isSimulationPausedRef.current = next;
+                audioSystem.playClick();
+              }}
+              title={isSimulationPaused ? 'Resume Orbital Revolution & Spin' : 'Pause Orbital Revolution & Spin'}
+              className={`px-2 py-1 rounded-lg transition flex items-center gap-1 text-[10px] font-bold ${
+                isSimulationPaused
+                  ? 'bg-amber-950/90 text-amber-300 border border-amber-500/70 shadow-sm'
+                  : 'bg-emerald-950/80 text-emerald-300 border border-emerald-600/60 shadow-sm'
+              }`}
+            >
+              {isSimulationPaused ? <Play className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <Pause className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+              <span>{isSimulationPaused ? 'ORBIT: PAUSED' : 'ORBIT: ACTIVE'}</span>
+            </button>
+
+            {/* Reset Camera Orbit */}
+            <button
+              onClick={() => setPresetView('lunar_surface')}
+              title="Reset Surface Camera"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Fullscreen Toggle */}
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Expand 3D View'}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            >
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
 
-        {/* Toggle Rotation Axes Control */}
-        <button
-          onClick={() => {
-            const next = !showAxes;
-            setShowAxes(next);
-            showAxesRef.current = next;
-            axesGroupsRef.current.forEach(g => {
-              g.visible = next;
-            });
-            audioSystem.playClick();
-          }}
-          title={showAxes ? 'Hide Planetary Rotation Axes' : 'Show Planetary Rotation Axes & Directional Indicators'}
-          className={`p-1.5 rounded-lg transition flex items-center gap-1 ${
-            showAxes
-              ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-700/60'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
+        {/* Row 2: Full-Width Camera & Celestial Presets Bar */}
+        <div 
+          ref={presetBarRef}
+          className="w-full bg-slate-950/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl pointer-events-auto flex flex-nowrap lg:flex-wrap items-center gap-1.5 sm:gap-2 overflow-x-auto lg:overflow-x-visible no-scrollbar"
         >
-          <Compass className="w-4 h-4" />
-          <span className="hidden xl:inline text-[9px] font-bold">AXES: {showAxes ? 'ON' : 'OFF'}</span>
-        </button>
+          {/* Group 1: Core Views */}
+          <div className="flex items-center gap-1 shrink-0 pr-1.5 border-r border-slate-800">
+            <span className="text-[9px] font-mono text-sky-400 font-bold uppercase tracking-wider pl-1 pr-0.5">Views:</span>
+            
+            <button
+              onClick={() => setPresetView('lunar_surface')}
+              data-active={cameraView === 'lunar_surface' || cameraView === 'orbital'}
+              title="Lunar Surface Close View (Astronauts, Habitat & Rover on Curved Horizon)"
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                cameraView === 'lunar_surface' || cameraView === 'orbital'
+                  ? 'bg-sky-500 text-slate-950 shadow-md ring-1 ring-sky-300'
+                  : 'bg-slate-900 text-sky-400 hover:text-white hover:bg-slate-800 border border-sky-500/30'
+              }`}
+            >
+              <span>Lunar Surface</span>
+            </button>
 
-        {/* Toggle Cinematic Tour Mode */}
-        <button
-          onClick={() => {
-            const next = !isCinematicTour;
-            setIsCinematicTour(next);
-            isCinematicTourRef.current = next;
-            audioSystem.playClick();
-          }}
-          title={isCinematicTour ? 'Pause Cinematic Orbit Tour' : 'Start Cinematic Auto-Panning Tour'}
-          className={`p-1.5 rounded-lg transition flex items-center gap-1 ${
-            isCinematicTour
-              ? 'bg-purple-950/80 text-purple-300 border border-purple-700/60'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Film className="w-4 h-4" />
-          <span className="hidden xl:inline text-[9px] font-bold">{isCinematicTour ? 'TOUR: ON' : 'TOUR'}</span>
-        </button>
+            <button
+              onClick={() => setPresetView('moon_globe')}
+              data-active={cameraView === 'moon_globe'}
+              title="Complete Spherical Moon Globe View"
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                cameraView === 'moon_globe'
+                  ? 'bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 shadow-md ring-1 ring-cyan-300'
+                  : 'bg-slate-900 text-cyan-300 hover:text-white hover:bg-slate-800 border border-cyan-500/30'
+              }`}
+            >
+              <Globe2 className="w-3 h-3 shrink-0" />
+              <span>Moon Globe</span>
+            </button>
 
-        {/* Toggle Orbital Simulation Pause / Resume */}
-        <button
-          onClick={() => {
-            const next = !isSimulationPaused;
-            setIsSimulationPaused(next);
-            isSimulationPausedRef.current = next;
-            audioSystem.playClick();
-          }}
-          title={isSimulationPaused ? 'Resume Orbital Revolution & Spin' : 'Pause Orbital Revolution & Spin'}
-          className={`p-1.5 rounded-lg transition flex items-center gap-1 ${
-            isSimulationPaused
-              ? 'bg-amber-950/90 text-amber-300 border border-amber-600/70 shadow-sm'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          {isSimulationPaused ? <Play className="w-4 h-4 text-amber-400" /> : <Pause className="w-4 h-4 text-emerald-400" />}
-          <span className="hidden xl:inline text-[9px] font-bold">{isSimulationPaused ? 'ORBIT: PAUSED' : 'ORBIT: ACTIVE'}</span>
-        </button>
+            <button
+              onClick={() => setPresetView('solar_system')}
+              data-active={cameraView === 'solar_system'}
+              title="Panoramic Solar System View (Sun, Moon Globe, and all 9 Planets)"
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                cameraView === 'solar_system'
+                  ? 'bg-gradient-to-r from-amber-400 to-indigo-500 text-slate-950 shadow-md ring-1 ring-amber-300'
+                  : 'bg-slate-900 text-amber-300 hover:text-white hover:bg-slate-800 border border-amber-500/30'
+              }`}
+            >
+              <Sparkles className="w-3 h-3 shrink-0" />
+              <span>Solar System</span>
+            </button>
 
-        {/* Reset Camera Orbit */}
-        <button
-          onClick={() => setPresetView('lunar_surface')}
-          title="Reset Surface Camera"
-          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-        >
-          <RotateCw className="w-4 h-4" />
-        </button>
+            <button
+              onClick={() => setPresetView('inner_planets')}
+              data-active={cameraView === 'inner_planets'}
+              title="Inner Planets View (Mercury through Mars & Sun)"
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                cameraView === 'inner_planets'
+                  ? 'bg-amber-400 text-slate-950 shadow-md ring-1 ring-amber-200'
+                  : 'bg-slate-900 text-amber-400 hover:text-white hover:bg-slate-800 border border-amber-500/30'
+              }`}
+            >
+              <span>Inner</span>
+            </button>
 
-        {/* Fullscreen Toggle */}
-        <button
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          title={isFullscreen ? 'Exit Fullscreen' : 'Expand 3D View'}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-        >
-          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </button>
+            <button
+              onClick={() => setPresetView('outer_planets')}
+              data-active={cameraView === 'outer_planets'}
+              title="Outer Planets View (Jupiter, Saturn, Uranus, Neptune, Pluto)"
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                cameraView === 'outer_planets'
+                  ? 'bg-indigo-400 text-slate-950 shadow-md ring-1 ring-indigo-200'
+                  : 'bg-slate-900 text-indigo-400 hover:text-white hover:bg-slate-800 border border-indigo-500/30'
+              }`}
+            >
+              <span>Outer</span>
+            </button>
 
+            <button
+              onClick={() => {
+                const focusId = selectedPlanet?.id || 'saturn';
+                setSelectedPlanet(CELESTIAL_BODIES[focusId]);
+                setPresetView('planet_focus');
+              }}
+              data-active={cameraView === 'planet_focus'}
+              title="Planet Focus View (Track Selected Planet)"
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                cameraView === 'planet_focus'
+                  ? 'bg-pink-500 text-slate-950 shadow-md ring-1 ring-pink-300'
+                  : 'bg-slate-900 text-pink-400 hover:text-white hover:bg-slate-800 border border-pink-500/30'
+              }`}
+            >
+              <span>Focus</span>
+            </button>
+          </div>
+
+          {/* Group 2: Worlds (Sun, 9 Planets + Moon) */}
+          <div className="flex items-center gap-1 shrink-0 pr-1.5 border-r border-slate-800">
+            <span className="text-[9px] font-mono text-amber-400 font-bold uppercase tracking-wider pl-1 pr-0.5">Worlds:</span>
+            {(['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'] as const).map(bodyId => {
+              const isActive = cameraView === bodyId;
+              const displayName = bodyId === 'sun' ? 'Sun' : bodyId === 'pluto' ? 'Pluto' : bodyId.charAt(0).toUpperCase() + bodyId.slice(1);
+              return (
+                <button
+                  key={bodyId}
+                  data-active={isActive}
+                  onClick={() => {
+                    setPresetView(bodyId);
+                    setSelectedPlanet(CELESTIAL_BODIES[bodyId]);
+                  }}
+                  title={`Focus ${CELESTIAL_BODIES[bodyId]?.name || displayName}`}
+                  className={`shrink-0 whitespace-nowrap px-2 py-1 rounded-md text-[9px] font-bold uppercase transition ${
+                    isActive
+                      ? 'bg-amber-400 text-slate-950 shadow-sm ring-1 ring-amber-200'
+                      : 'bg-slate-900/60 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
+                  }`}
+                >
+                  {displayName}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Group 3: Base Facilities */}
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-[9px] font-mono text-slate-400 font-bold uppercase tracking-wider pl-1 pr-0.5">Base:</span>
+            {(['habitat', 'solar', 'greenhouse', 'water', 'shelter', 'lander', 'rover'] as const).map(preset => {
+              const isActive = cameraView === preset;
+              return (
+                <button
+                  key={preset}
+                  data-active={isActive}
+                  onClick={() => setPresetView(preset)}
+                  title={`Focus ${preset.charAt(0).toUpperCase() + preset.slice(1)}`}
+                  className={`shrink-0 whitespace-nowrap px-1.5 py-1 rounded-md text-[9px] font-bold uppercase transition ${
+                    isActive
+                      ? 'bg-sky-500 text-slate-950 shadow-sm ring-1 ring-sky-300'
+                      : 'bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-700/60'
+                  }`}
+                >
+                  {preset}
+                </button>
+              );
+            })}
+          </div>
+
+        </div>
       </div>
 
       {/* Bottom Educational Hint & Telemetry Bar */}
