@@ -25,7 +25,7 @@ export class DrAstraService {
       this.aiClient = mockClient;
       this.isMockClient = true;
     } else if (config.geminiApiKey) {
-      this.aiClient = new GoogleGenAI({ apiKey: config.geminiApiKey, apiVersion: 'v1beta' });
+      this.aiClient = new GoogleGenAI({ apiKey: config.geminiApiKey });
     }
   }
 
@@ -160,7 +160,7 @@ LANGUAGE GUIDELINES:
    *   Any late-resolving promises from upstream are strictly discarded and prevented from mutating
    *   or affecting client responses.
    */
-  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 35000): Promise<ChatSuccessResponse> {
+  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 18000): Promise<ChatSuccessResponse> {
     const { message, learningProfile, campaign, currentObjective, simulationContext } = payload;
     const systemPrompt = this.buildSystemInstruction(learningProfile, campaign);
 
@@ -215,7 +215,47 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
           }
         }
 
-        // Case B: Production Google Gemini API call via official REST endpoint
+        // Case B: Production Google Gemini SDK call
+        if (this.aiClient) {
+          // 1. Try Interactions API first (recommended for gemini-3.8-flash)
+          if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
+            try {
+              const int = await (this.aiClient as any).interactions.create({
+                model: this.config.geminiModel,
+                input: `${systemPrompt}\n\n${contextTelemetryPrompt}`,
+              }, {
+                timeout: 14000,
+              });
+              const outputText = int?.output_text || 
+                (Array.isArray(int?.steps) && int.steps[int.steps.length - 1]?.content?.[0]?.text) || '';
+              if (outputText) return outputText;
+            } catch (intErr: unknown) {
+              this.recordUpstreamDiagnosis(intErr);
+            }
+          }
+
+          // 2. Try models.generateContent via SDK
+          if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
+            try {
+              const res = await (this.aiClient as any).models.generateContent({
+                model: this.config.geminiModel,
+                contents: contextTelemetryPrompt,
+                config: {
+                  systemInstruction: systemPrompt,
+                  maxOutputTokens: 1024,
+                  abortSignal: abortController.signal,
+                },
+              });
+              const text = res?.text || '';
+              if (text) return text;
+            } catch (modelErr: unknown) {
+              this.recordUpstreamDiagnosis(modelErr);
+              throw modelErr;
+            }
+          }
+        }
+
+        // Case C: Fallback to direct REST if SDK methods unavailable
         if (this.config.geminiApiKey) {
           try {
             const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.config.geminiModel)}:generateContent`;
