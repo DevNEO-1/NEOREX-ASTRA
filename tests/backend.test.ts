@@ -538,6 +538,246 @@ describe('Dr. Astra Secure Gemini Backend Foundation', () => {
     });
   });
 
+  describe('Bounded Retries, 503 Error Propagation & Model Fallback', () => {
+    it('primary model succeeds immediately on first attempt without retrying or calling alternative model', async () => {
+      const mockGenerateContent = vi.fn().mockResolvedValue({
+        text: 'Space cadets must monitor lunar outpost power and battery reserves closely.',
+      });
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(false);
+      expect(res.response).toContain('Space cadets must monitor');
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({
+        model: 'gemini-3.8-flash',
+      }));
+    });
+
+    it('primary model returns 503 twice, then succeeds on third attempt', async () => {
+      const error503 = new Error('503 UNAVAILABLE: The model is currently experiencing high demand.');
+      (error503 as any).status = 503;
+
+      const mockGenerateContent = vi.fn()
+        .mockRejectedValueOnce(error503)
+        .mockRejectedValueOnce(error503)
+        .mockResolvedValueOnce({
+          text: 'Electrolysis consumes water to produce breathable oxygen for the outpost crew.',
+        });
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(false);
+      expect(res.response).toContain('Electrolysis consumes water');
+      expect(mockGenerateContent).toHaveBeenCalledTimes(3);
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(1, expect.objectContaining({ model: 'gemini-3.8-flash' }));
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: 'gemini-3.8-flash' }));
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(3, expect.objectContaining({ model: 'gemini-3.8-flash' }));
+    });
+
+    it('primary model exhausts all three attempts with 503, then alternative model succeeds', async () => {
+      const error503 = new Error('503 Service Unavailable: High demand spikes.');
+      (error503 as any).status = 503;
+
+      const mockGenerateContent = vi.fn().mockImplementation((args: any) => {
+        if (args.model === 'gemini-3.8-flash') {
+          return Promise.reject(error503);
+        }
+        if (args.model === 'gemini-3.5-flash-lite') {
+          return Promise.resolve({
+            text: 'Guidance from alternative model: Conserve battery during the 14-day lunar night.',
+          });
+        }
+        return Promise.reject(new Error(`Unknown model: ${args.model}`));
+      });
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(false);
+      expect(res.response).toContain('Guidance from alternative model');
+      // 3 calls to primary model + 1 call to alternative model
+      expect(mockGenerateContent).toHaveBeenCalledTimes(4);
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(1, expect.objectContaining({ model: 'gemini-3.8-flash' }));
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: 'gemini-3.8-flash' }));
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(3, expect.objectContaining({ model: 'gemini-3.8-flash' }));
+      expect(mockGenerateContent).toHaveBeenNthCalledWith(4, expect.objectContaining({ model: 'gemini-3.5-flash-lite' }));
+    });
+
+    it('both primary and alternative models return 503, safely serving deterministic fallback', async () => {
+      const error503 = new Error('503 Service Unavailable: High demand spikes.');
+      (error503 as any).status = 503;
+
+      const mockGenerateContent = vi.fn().mockRejectedValue(error503);
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(true);
+      expect(res.response).toBeDefined();
+
+      const diag = service.getLastUpstreamDiagnosis();
+      expect(diag).toBeDefined();
+      expect(diag?.httpStatus).toBe(503);
+      expect(diag?.modelAttempted).toBe('gemini-3.5-flash-lite');
+      // 3 attempts on primary + 1 attempt on fallback = 4 total
+      expect(mockGenerateContent).toHaveBeenCalledTimes(4);
+    });
+
+    it('primary model returns 429 and neither retries nor triggers the alternative model', async () => {
+      const error429 = new Error('429 RESOURCE_EXHAUSTED: Quota exceeded for quota metric');
+      (error429 as any).status = 429;
+
+      const mockGenerateContent = vi.fn().mockRejectedValue(error429);
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(true);
+      expect(res.response).toBeDefined();
+
+      // Crucial: exactly 1 call was made (0 retries, no alternative model)
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({ model: 'gemini-3.8-flash' }));
+
+      const diag = service.getLastUpstreamDiagnosis();
+      expect(diag).toBeDefined();
+      expect(diag?.httpStatus).toBe(429);
+      expect(diag?.isQuotaExhausted).toBe(true);
+      expect(diag?.retriesAttempted).toBe(0);
+      expect(diag?.modelAttempted).toBe('gemini-3.8-flash');
+    });
+
+    it('SDK Interactions API 503 errors are not swallowed and reach the retry controller', async () => {
+      const error503 = new Error('[GoogleGenAI Error]: [503 Service Unavailable] The model is overloaded. Please try again later.');
+      (error503 as any).status = 503;
+
+      const mockInteractionsCreate = vi.fn()
+        .mockRejectedValueOnce(error503)
+        .mockResolvedValueOnce({ output_text: 'Interactions API succeeded after 503 retry.' });
+
+      const mockClient = {
+        interactions: {
+          create: mockInteractionsCreate,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(false);
+      expect(res.response).toBe('Interactions API succeeded after 503 retry.');
+      // 503 was not swallowed: it triggered the retry controller and succeeded on attempt 2
+      expect(mockInteractionsCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('SDK generateContent 503 errors are not swallowed and reach the retry controller', async () => {
+      const error503 = new Error('503 Service Unavailable');
+      (error503 as any).status = 503;
+
+      const mockGenerateContent = vi.fn()
+        .mockRejectedValueOnce(error503)
+        .mockResolvedValueOnce({ text: 'SDK generateContent succeeded after 503 retry.' });
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(false);
+      expect(res.response).toBe('SDK generateContent succeeded after 503 retry.');
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    });
+
+    it('timeout during retry/backoff safely serves fallback and halts execution', async () => {
+      const error503 = new Error('503 Service Unavailable');
+      (error503 as any).status = 503;
+
+      const mockGenerateContent = vi.fn()
+        .mockRejectedValueOnce(error503)
+        .mockImplementation(() => new Promise(() => {}));
+
+      const mockClient = {
+        models: {
+          generateContent: mockGenerateContent,
+        },
+      } as any;
+
+      const service = new DrAstraService(
+        { ...mockConfig, nodeEnv: 'production', geminiModel: 'gemini-3.8-flash', geminiFallbackModel: 'gemini-3.5-flash-lite', geminiApiKey: 'test-key' },
+        mockClient
+      );
+
+      const res = await service.generateAdvice(sampleValidPayload, 40);
+      expect(res.success).toBe(true);
+      expect(res.isFallback).toBe(true);
+      expect(res.response).toBeDefined();
+    });
+  });
+
   describe('Simulation State Immutability Protection', () => {
     it('verifies the AI backend returns only advice and cannot mutate client simulation values', async () => {
       const app = createServer(mockConfig);
