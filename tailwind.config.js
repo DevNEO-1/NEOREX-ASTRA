@@ -28,10 +28,10 @@ export default {
         sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
       boxShadow: {
-        'glow-cyan': '0 0 15px -3px rgba(6, 182, 212, 0.4)',
-        'glow-emerald': '0 0 15px -3px rgba(16, 185, 129, 0.4)',
-        'glow-amber': '0 0 15px -3px rgba(245, 158, 11, 0.4)',
-        'glow-red': '0 0 15px -3px rgba(239, 68, 68, 0.4)',
+        'glow-cyan': '0 2px 10px -2px rgba(6, 182, 212, 0.25)',
+        'glow-emerald': '0 2px 10px -2px rgba(16, 185, 129, 0.25)',
+        'glow-amber': '0 2px 10px -2px rgba(245, 158, 11, 0.25)',
+        'glow-red': '0 2px 10px -2px rgba(239, 68, 68, 0.25)',
       }
     },
   },

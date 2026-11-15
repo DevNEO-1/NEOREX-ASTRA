@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { GameState, PlanetType } from '../simulator/types';
-import { createInitialGameState } from '../simulator/campaign';
+import { createInitialGameState, createInitialObjectives } from '../simulator/campaign';
 import { stepSimulationDay } from '../simulator/engine';
 import { buildUpgrade, toggleSystemControl, ConstructionUpgradeType } from '../simulator/construction';
 import { resolveEventChoice } from '../simulator/events';
@@ -16,8 +16,23 @@ export function useSimulator() {
       const marsUnlockedStored = localStorage.getItem(MARS_UNLOCK_KEY) === 'true';
       if (saved) {
         const parsed = JSON.parse(saved);
+        // Rehydrate objective function predicates lost during JSON serialization
+        const freshObjectives = createInitialObjectives(parsed.campaign || 'moon');
+        const rehydratedObjectives = freshObjectives.map(freshObj => {
+          const matchedSaved = (parsed.objectives || []).find((o: any) => o.id === freshObj.id);
+          if (matchedSaved) {
+            return {
+              ...freshObj,
+              achieved: matchedSaved.achieved,
+              achievedDay: matchedSaved.achievedDay,
+            };
+          }
+          return freshObj;
+        });
+
         return {
           ...parsed,
+          objectives: rehydratedObjectives,
           marsUnlocked: parsed.marsUnlocked || marsUnlockedStored,
         };
       }
