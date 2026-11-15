@@ -123,7 +123,7 @@ LANGUAGE GUIDELINES:
    *   Any late-resolving promises from upstream are strictly discarded and prevented from mutating
    *   or affecting client responses.
    */
-  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 7000): Promise<ChatSuccessResponse> {
+  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 12000): Promise<ChatSuccessResponse> {
     const { message, learningProfile, campaign, currentObjective, simulationContext } = payload;
     const systemPrompt = this.buildSystemInstruction(learningProfile, campaign);
 
@@ -155,48 +155,51 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       const generatePromise = (async (): Promise<string> => {
         if (!this.aiClient) return '';
 
+        let responseText = '';
+
         // If client supports Interactions API (recommended for gemini-3.8-flash)
         if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
-          const interaction = await (this.aiClient as any).interactions.create({
-            model: this.config.geminiModel,
-            input: contextTelemetryPrompt,
-            system_instruction: systemPrompt,
-            generation_config: {
-              temperature: 0.7,
-              max_output_tokens: 256,
-            },
-            store: false,
-          }, {
-            fetch_options: {
-              signal: abortController.signal,
-            },
-            timeout_ms: timeoutMs,
-          });
+          try {
+            const interaction = await (this.aiClient as any).interactions.create({
+              model: this.config.geminiModel,
+              input: contextTelemetryPrompt,
+              system_instruction: systemPrompt,
+              generation_config: {
+                temperature: 0.7,
+                max_output_tokens: 256,
+              },
+              automatic_continuation: false,
+              store: false,
+            }, {
+              fetch_options: {
+                signal: abortController.signal,
+              },
+              timeout_ms: timeoutMs,
+            });
 
-          if (interaction?.output_text) {
-            return String(interaction.output_text);
-          }
-          if (Array.isArray(interaction?.steps)) {
-            let extracted = '';
-            for (const step of interaction.steps) {
-              if (step && (step.type === 'model_output' || step.event_type === 'model_output') && step.output) {
-                if (typeof step.output === 'string') {
-                  extracted += step.output;
-                } else if (Array.isArray(step.output)) {
-                  for (const part of step.output) {
-                    if (typeof part === 'string') extracted += part;
-                    else if (part && typeof part.text === 'string') extracted += part.text;
+            if (interaction?.output_text) {
+              responseText = String(interaction.output_text);
+            } else if (Array.isArray(interaction?.steps)) {
+              for (const step of interaction.steps) {
+                if (step && (step.type === 'model_output' || step.event_type === 'model_output') && step.output) {
+                  if (typeof step.output === 'string') {
+                    responseText += step.output;
+                  } else if (Array.isArray(step.output)) {
+                    for (const part of step.output) {
+                      if (typeof part === 'string') responseText += part;
+                      else if (part && typeof part.text === 'string') responseText += part.text;
+                    }
                   }
                 }
               }
             }
-            if (extracted) return extracted;
+          } catch (interactionErr: unknown) {
+            console.warn('DrAstraService: Interactions API call caught error, trying models.generateContent:', interactionErr instanceof Error ? interactionErr.message : String(interactionErr));
           }
-          return '';
         }
 
-        // Fallback to models.generateContent (e.g. for mock clients or older SDK interfaces)
-        if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
+        // If response is still empty and models.generateContent is available, fallback to models.generateContent
+        if (!responseText && 'models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
           const response = await (this.aiClient as any).models.generateContent({
             model: this.config.geminiModel,
             contents: contextTelemetryPrompt,
@@ -207,10 +210,10 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
               abortSignal: abortController.signal,
             },
           });
-          return response?.text || '';
+          responseText = response?.text || '';
         }
 
-        return '';
+        return responseText;
       })();
 
       // 2. Set timeout race with safe abandonment tracking

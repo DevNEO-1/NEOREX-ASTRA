@@ -100,7 +100,7 @@ export async function sendDrAstraMessage(
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     const res = await fetch(endpoint, {
       method: 'POST',
