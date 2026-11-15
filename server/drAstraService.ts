@@ -272,11 +272,15 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
           if (!err) return false;
           const errName = err instanceof Error ? err.name : (err as any)?.constructor?.name || '';
           const msg = err instanceof Error ? err.message : String(err);
+          if (abortController.signal.aborted) return false;
           return errName === 'APIConnectionTimeoutError' ||
                  errName === 'TimeoutError' ||
+                 errName === 'APIUserAbortError' ||
+                 errName === 'AbortError' ||
                  msg.includes('APIConnectionTimeoutError') ||
                  msg.includes('timed out') ||
                  msg.includes('TimeoutError') ||
+                 msg.includes('AbortError') ||
                  msg.includes('ECONNRESET') ||
                  msg.includes('ETIMEDOUT') ||
                  msg.includes('ENOTFOUND') ||
@@ -323,7 +327,12 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
             throw new Error('GEMINI_UPSTREAM_TIMEOUT');
           }
 
-          // Path 1: Try Interactions API via SDK (recommended by Google for 3.8 models)
+          const timeoutDuration = attemptTimeoutMs || (isTest ? 100 : 12000);
+          const attemptSignal = typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function'
+            ? AbortSignal.any([abortController.signal, AbortSignal.timeout(timeoutDuration)])
+            : abortController.signal;
+
+          // Path 1: Try Interactions API via SDK (if supported on target client/endpoint)
           if (this.aiClient && 'interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
             try {
               const int = await (this.aiClient as any).interactions.create({
@@ -331,15 +340,23 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 input: `${systemPrompt}\n\n${contextTelemetryPrompt}`,
                 store: false,
               }, {
-                timeout: attemptTimeoutMs,
-                signal: abortController.signal,
+                timeout_ms: timeoutDuration,
+                signal: attemptSignal,
               });
               const outputText = int?.output_text || 
                 (Array.isArray(int?.steps) && int.steps[int.steps.length - 1]?.content?.[0]?.text) || '';
               if (outputText) return outputText;
             } catch (intErr: unknown) {
-              // Upstream errors (503, 429, etc.) MUST reach the retry controller immediately
-              throw intErr;
+              const msg = intErr instanceof Error ? intErr.message : String(intErr);
+              const status = typeof (intErr as { status?: number })?.status === 'number'
+                ? (intErr as { status: number }).status
+                : undefined;
+              // If interactions endpoint returns 404 Not Found or unsupported method, fall through to Path 2 (models.generateContent)
+              if (status === 404 || msg.includes('404') || msg.includes('not found') || msg.includes('unsupported') || msg.includes('is not a function')) {
+                // fall through to models.generateContent
+              } else {
+                throw intErr;
+              }
             }
           }
 
@@ -352,7 +369,13 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 config: {
                   systemInstruction: systemPrompt,
                   maxOutputTokens: 1024,
-                  abortSignal: abortController.signal,
+                  abortSignal: attemptSignal,
+                  thinkingConfig: {
+                    thinkingLevel: 'LOW',
+                  },
+                  httpOptions: {
+                    timeout: timeoutDuration,
+                  },
                 },
               });
               const text = res?.text || '';
@@ -389,7 +412,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 'x-goog-api-key': this.config.geminiApiKey,
               },
               body: JSON.stringify(reqBody),
-              signal: abortController.signal,
+              signal: attemptSignal,
             });
 
             if (!response.ok) {
@@ -426,7 +449,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           if (abortController.signal.aborted) break;
           attemptsUsed = attempt + 1;
-          const remainingForPrimary = isTest ? timeoutMs : Math.min(14000, Math.max(3000, getRemainingMs() - 8000));
+          const remainingForPrimary = isTest ? timeoutMs : Math.min(12000, Math.max(3000, getRemainingMs() - 8000));
           try {
             const text = await executeModelAttempt(primaryModel, remainingForPrimary);
             if (text) return text;

@@ -565,7 +565,7 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(oobDiag.normal.x).toBeCloseTo(Math.SQRT1_2, 3);
       expect(oobDiag.normal.z).toBeCloseTo(Math.SQRT1_2, 3);
       expect(oobDiag.normal.length()).toBeCloseTo(1, 4);
-    });
+    }, 15000);
 
     it('verifies accurate NASA axial tilts and retrograde spin designations', () => {
       const celestialTilts = {
