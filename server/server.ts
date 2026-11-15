@@ -96,9 +96,9 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
     next();
   });
 
-  // Request timeout protection (30 seconds total HTTP cycle)
+  // Request timeout protection (40 seconds total HTTP cycle)
   app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setTimeout(30000, () => {
+    res.setTimeout(40000, () => {
       if (!res.headersSent) {
         const timeoutResponse: ChatErrorResponse = {
           success: false,
@@ -125,7 +125,7 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
     }
 
     try {
-      const advice = await astraService.generateAdvice(validation.sanitizedPayload, 25000);
+      const advice = await astraService.generateAdvice(validation.sanitizedPayload, 35000);
       return res.status(200).json(advice);
     } catch (err) {
       console.error('Unhandled error in /api/dr-astra/chat:', err);

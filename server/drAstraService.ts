@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { ChatRequestPayload, ChatSuccessResponse, LearningProfileTier } from './types.js';
 import { ServerConfig } from './config.js';
 import { reviewAiResponseSafety } from './safetyReviewer.js';
@@ -123,7 +123,7 @@ LANGUAGE GUIDELINES:
    *   Any late-resolving promises from upstream are strictly discarded and prevented from mutating
    *   or affecting client responses.
    */
-  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 25000): Promise<ChatSuccessResponse> {
+  public async generateAdvice(payload: ChatRequestPayload, timeoutMs: number = 35000): Promise<ChatSuccessResponse> {
     const { message, learningProfile, campaign, currentObjective, simulationContext } = payload;
     const systemPrompt = this.buildSystemInstruction(learningProfile, campaign);
 
@@ -155,22 +155,30 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
       const generatePromise = (async (): Promise<string> => {
         if (!this.aiClient) return '';
 
-        // Primary: High-speed models.generateContent with gemini-3.8-flash
+        // Primary: High-speed models.generateContent with gemini-3.8-flash and ThinkingLevel.LOW
         if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
-          const response = await (this.aiClient as any).models.generateContent({
-            model: this.config.geminiModel,
-            contents: contextTelemetryPrompt,
-            config: {
-              systemInstruction: systemPrompt,
-              temperature: 0.7,
-              maxOutputTokens: 256,
-              abortSignal: abortController.signal,
-            },
-          });
-          return response?.text || '';
+          try {
+            const response = await (this.aiClient as any).models.generateContent({
+              model: this.config.geminiModel,
+              contents: contextTelemetryPrompt,
+              config: {
+                systemInstruction: systemPrompt,
+                temperature: 0.7,
+                maxOutputTokens: 1024,
+                thinkingConfig: {
+                  thinkingLevel: ThinkingLevel.LOW,
+                },
+                abortSignal: abortController.signal,
+              },
+            });
+            const text = response?.text || '';
+            if (text) return text;
+          } catch (modelErr: unknown) {
+            console.warn('DrAstraService: models.generateContent caught error, attempting interactions.create:', modelErr instanceof Error ? modelErr.message : String(modelErr));
+          }
         }
 
-        // Secondary: Interactions API fallback if models is not present
+        // Secondary: Interactions API fallback
         if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
           const interaction = await (this.aiClient as any).interactions.create({
             model: this.config.geminiModel,
@@ -178,7 +186,8 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
             system_instruction: systemPrompt,
             generation_config: {
               temperature: 0.7,
-              max_output_tokens: 256,
+              max_output_tokens: 1024,
+              thinking_level: 'low',
             },
             automatic_continuation: false,
             store: false,
