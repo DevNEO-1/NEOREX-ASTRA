@@ -450,57 +450,121 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(CELESTIAL_BODIES.pluto.nasaFacts[1]).toContain('Sputnik Planitia');
     });
 
-    it('verifies visual scale hierarchy ensuring every planet and Pluto appears larger than the Moon, with Jupiter, Saturn, and Sun as largest celestial bodies', () => {
-      // Visual scale hierarchy in educational scale mode:
-      // Moon (10) < Pluto (14) < Mercury (16) < Mars (19) < Venus (22) < Earth (25) < Neptune (27) < Uranus (29) < Saturn (40) < Jupiter (48) < Sun (75)
-      const visualScales = {
-        moon: 10,
-        pluto: 14,
-        mercury: 16,
-        mars: 19,
-        venus: 22,
-        earth: 25,
-        neptune: 27,
-        uranus: 29,
-        saturn: 40,
-        jupiter: 48,
-        sun: 75,
-      };
+    it('verifies visual scale hierarchy ensuring every planet and Pluto appears larger than the Moon, testing the shared exported CELESTIAL_VISUAL_SCALES configuration', async () => {
+      const { CELESTIAL_VISUAL_SCALES } = await import('../src/data/celestialBodies');
 
-      // Every planet and Pluto is strictly larger than the Moon
-      const nonMoonBodies = Object.keys(visualScales).filter(k => k !== 'moon') as (keyof typeof visualScales)[];
-      nonMoonBodies.forEach(id => {
-        expect(visualScales[id]).toBeGreaterThan(visualScales.moon);
+      // 1. Verify all celestial bodies are defined in the shared visual scale configuration
+      const requiredBodies = ['moon', 'pluto', 'mercury', 'mars', 'venus', 'earth', 'neptune', 'uranus', 'saturn', 'jupiter', 'sun'] as const;
+      requiredBodies.forEach(id => {
+        expect(CELESTIAL_VISUAL_SCALES[id], `Missing visual scale config for ${id}`).toBeDefined();
+        expect(CELESTIAL_VISUAL_SCALES[id].educationalVisualScale).toBeGreaterThan(0);
+        expect(CELESTIAL_VISUAL_SCALES[id].renderedRadius).toBeGreaterThan(0);
+        expect(CELESTIAL_VISUAL_SCALES[id].scaleRationale.length).toBeGreaterThan(0);
       });
 
-      // Gas giants Jupiter and Saturn are visually impressive and larger than terrestrial worlds
-      expect(visualScales.jupiter).toBeGreaterThan(visualScales.earth);
-      expect(visualScales.saturn).toBeGreaterThan(visualScales.earth);
-      expect(visualScales.jupiter).toBe(48);
-      expect(visualScales.saturn).toBe(40);
+      // 2. Clearly distinguish rendered Three.js radius from educational visual scale
+      // The central Moon globe has rendered physical radius 38 (to encompass the base)
+      expect(CELESTIAL_VISUAL_SCALES.moon.renderedRadius).toBe(38.0);
+      expect(CELESTIAL_VISUAL_SCALES.moon.educationalVisualScale).toBe(10);
 
-      // The Sun is the grandest stellar object in the solar system
-      expect(visualScales.sun).toBeGreaterThan(visualScales.jupiter);
-      expect(visualScales.sun).toBe(75);
+      // Sun rendered radius vs educational visual scale
+      expect(CELESTIAL_VISUAL_SCALES.sun.renderedRadius).toBe(42.0);
+      expect(CELESTIAL_VISUAL_SCALES.sun.educationalVisualScale).toBe(75);
+
+      // 3. Every planet and Pluto has educationalVisualScale strictly greater than the Moon reference
+      const nonMoonBodies = requiredBodies.filter(id => id !== 'moon');
+      nonMoonBodies.forEach(id => {
+        expect(
+          CELESTIAL_VISUAL_SCALES[id].educationalVisualScale,
+          `Body ${id} must have educational scale greater than Moon (10)`
+        ).toBeGreaterThan(CELESTIAL_VISUAL_SCALES.moon.educationalVisualScale);
+      });
+
+      // 4. Strict visual hierarchy progression:
+      // Moon (10) < Pluto (14) < Mercury (16) < Mars (19) < Venus (22) < Earth (25) < Neptune (27) < Uranus (29) < Saturn (40) < Jupiter (48) < Sun (75)
+      expect(CELESTIAL_VISUAL_SCALES.pluto.educationalVisualScale).toBe(14);
+      expect(CELESTIAL_VISUAL_SCALES.mercury.educationalVisualScale).toBe(16);
+      expect(CELESTIAL_VISUAL_SCALES.mars.educationalVisualScale).toBe(19);
+      expect(CELESTIAL_VISUAL_SCALES.venus.educationalVisualScale).toBe(22);
+      expect(CELESTIAL_VISUAL_SCALES.earth.educationalVisualScale).toBe(25);
+      expect(CELESTIAL_VISUAL_SCALES.neptune.educationalVisualScale).toBe(27);
+      expect(CELESTIAL_VISUAL_SCALES.uranus.educationalVisualScale).toBe(29);
+      expect(CELESTIAL_VISUAL_SCALES.saturn.educationalVisualScale).toBe(40);
+      expect(CELESTIAL_VISUAL_SCALES.jupiter.educationalVisualScale).toBe(48);
+      expect(CELESTIAL_VISUAL_SCALES.sun.educationalVisualScale).toBe(75);
+
+      // Gas giants Jupiter and Saturn are visually impressive and larger than terrestrial worlds
+      expect(CELESTIAL_VISUAL_SCALES.jupiter.educationalVisualScale).toBeGreaterThan(CELESTIAL_VISUAL_SCALES.earth.educationalVisualScale);
+      expect(CELESTIAL_VISUAL_SCALES.saturn.educationalVisualScale).toBeGreaterThan(CELESTIAL_VISUAL_SCALES.earth.educationalVisualScale);
+
+      // The Sun is the grandest celestial body
+      expect(CELESTIAL_VISUAL_SCALES.sun.educationalVisualScale).toBeGreaterThan(CELESTIAL_VISUAL_SCALES.jupiter.educationalVisualScale);
     });
 
-    it('computes exact spherical Moon surface point, elevation drop, and local surface normal', async () => {
+    it('computes exact spherical Moon surface point across center, normal surface points, near-edge points, and out-of-bounds coordinates safely', async () => {
       const { getMoonSurfacePoint, MOON_ENVIRONMENT_RADIUS } = await import('../src/components/OutpostScene3D');
       expect(MOON_ENVIRONMENT_RADIUS).toBe(38);
 
-      // At polar center (0, 0)
+      // A. Center polar point (x = 0, z = 0)
       const centerPt = getMoonSurfacePoint(0, 0, 38);
-      expect(centerPt.y).toBeCloseTo(0, 3); // Polar top surface is at y = 0
-      expect(centerPt.normal.x).toBeCloseTo(0, 3);
-      expect(centerPt.normal.y).toBeCloseTo(1, 3);
-      expect(centerPt.normal.z).toBeCloseTo(0, 3);
+      expect(centerPt.y).toBeCloseTo(0, 4); // Top polar surface is at y = 0
+      expect(centerPt.normal.x).toBeCloseTo(0, 4);
+      expect(centerPt.normal.y).toBeCloseTo(1, 4);
+      expect(centerPt.normal.z).toBeCloseTo(0, 4);
+      expect(centerPt.normal.length()).toBeCloseTo(1, 4);
+      expect(centerPt.quaternion.w).toBeCloseTo(1, 4); // Identity rotation
 
-      // At perimeter (x = 14, z = 0)
-      const perimeterPt = getMoonSurfacePoint(14, 0, 38);
-      expect(perimeterPt.y).toBeLessThan(0); // Surface curves downward along spherical arc
-      expect(perimeterPt.y).toBeCloseTo(Math.sqrt(38 * 38 - 14 * 14) - 38, 2);
-      expect(perimeterPt.normal.x).toBeGreaterThan(0);
-      expect(perimeterPt.normal.y).toBeLessThan(1);
+      // B. Normal surface points
+      // B1. Axis point (x = 14, z = 0)
+      const ptX = getMoonSurfacePoint(14, 0, 38);
+      expect(ptX.y).toBeLessThan(0); // Curves downward along spherical arc
+      expect(ptX.y).toBeCloseTo(Math.sqrt(38 * 38 - 14 * 14) - 38, 3);
+      expect(ptX.normal.x).toBeGreaterThan(0);
+      expect(ptX.normal.y).toBeLessThan(1);
+      expect(ptX.normal.z).toBeCloseTo(0, 4);
+      expect(ptX.normal.length()).toBeCloseTo(1, 4);
+
+      // B2. Diagonal outpost point (x = 10, z = 10)
+      const ptDiag = getMoonSurfacePoint(10, 10, 38);
+      expect(ptDiag.y).toBeCloseTo(Math.sqrt(38 * 38 - 200) - 38, 3);
+      expect(ptDiag.normal.x).toBeGreaterThan(0);
+      expect(ptDiag.normal.z).toBeGreaterThan(0);
+      expect(ptDiag.normal.length()).toBeCloseTo(1, 4);
+
+      // C. Near-edge points (approaching equator perimeter, r ≈ R)
+      const nearEdgePt = getMoonSurfacePoint(37.99, 0, 38);
+      const expectedNearEdgeY = Math.sqrt(38 * 38 - 37.99 * 37.99) - 38;
+      expect(nearEdgePt.y).toBeCloseTo(expectedNearEdgeY, 3);
+      expect(nearEdgePt.y).toBeLessThan(-37.0);
+      expect(nearEdgePt.normal.y).toBeGreaterThan(0);
+      expect(nearEdgePt.normal.y).toBeLessThan(0.05); // Normal is nearly horizontal
+      expect(nearEdgePt.normal.length()).toBeCloseTo(1, 4);
+      expect(Number.isNaN(nearEdgePt.y)).toBe(false);
+
+      // C2. Exact equator perimeter point (r = R = 38)
+      const equatorPt = getMoonSurfacePoint(38, 0, 38);
+      expect(equatorPt.y).toBe(-38);
+      expect(equatorPt.normal.x).toBeCloseTo(1, 4);
+      expect(equatorPt.normal.y).toBeCloseTo(0, 4);
+      expect(equatorPt.normal.length()).toBeCloseTo(1, 4);
+
+      // D. Out-of-bounds coordinates (r > R)
+      // D1. Radial overshoot on X axis (x = 60, z = 0 with R = 38)
+      const oobX = getMoonSurfacePoint(60, 0, 38);
+      expect(Number.isNaN(oobX.y)).toBe(false);
+      expect(oobX.y).toBe(-38); // Clamped smoothly to equator elevation drop -R
+      expect(oobX.normal.x).toBeCloseTo(1, 4);
+      expect(oobX.normal.y).toBeCloseTo(0, 4);
+      expect(oobX.normal.z).toBeCloseTo(0, 4);
+      expect(oobX.normal.length()).toBeCloseTo(1, 4);
+
+      // D2. Radial overshoot diagonal (x = 50, z = 50 with R = 38)
+      const oobDiag = getMoonSurfacePoint(50, 50, 38);
+      expect(Number.isNaN(oobDiag.y)).toBe(false);
+      expect(oobDiag.y).toBe(-38);
+      expect(oobDiag.normal.x).toBeCloseTo(Math.SQRT1_2, 3);
+      expect(oobDiag.normal.z).toBeCloseTo(Math.SQRT1_2, 3);
+      expect(oobDiag.normal.length()).toBeCloseTo(1, 4);
     });
 
     it('verifies accurate NASA axial tilts and retrograde spin designations', () => {

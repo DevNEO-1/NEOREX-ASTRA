@@ -35,7 +35,12 @@ import {
   getNeptuneTexture,
   getPlutoTexture
 } from '../utils/celestialTextures';
-import { CELESTIAL_BODIES, CelestialBodyInfo, CelestialBodyId } from '../data/celestialBodies';
+import { 
+  CELESTIAL_BODIES, 
+  CelestialBodyInfo, 
+  CelestialBodyId, 
+  CELESTIAL_VISUAL_SCALES 
+} from '../data/celestialBodies';
 import { PlanetInspectorModal } from './PlanetInspectorModal';
 import { createExplorationRover } from '../utils/roverProcedural';
 
@@ -63,10 +68,11 @@ export type CameraPresetView =
   | 'shelter'
   | 'rover';
 
-export const MOON_ENVIRONMENT_RADIUS = 38;
+export const MOON_ENVIRONMENT_RADIUS = CELESTIAL_VISUAL_SCALES.moon.renderedRadius; // 38.0
 
 /**
  * Computes exact spherical Moon surface point, elevation, outward normal, and tangent orientation.
+ * Robustly handles center, normal surface points, near-edge points, and out-of-bounds coordinates safely.
  */
 export function getMoonSurfacePoint(x: number, z: number, R: number = MOON_ENVIRONMENT_RADIUS): {
   y: number;
@@ -74,7 +80,33 @@ export function getMoonSurfacePoint(x: number, z: number, R: number = MOON_ENVIR
   quaternion: THREE.Quaternion;
 } {
   const r2 = x * x + z * z;
-  const sphereY = Math.sqrt(Math.max(0.01, R * R - r2));
+  const R2 = R * R;
+
+  // Handle polar center exactly
+  if (r2 <= 1e-9) {
+    return {
+      y: 0,
+      normal: new THREE.Vector3(0, 1, 0),
+      quaternion: new THREE.Quaternion(0, 0, 0, 1),
+    };
+  }
+
+  // Handle out-of-bounds and near-equator boundary points safely without clipping or NaN
+  if (r2 >= R2) {
+    const r = Math.sqrt(r2);
+    const clampedX = (x / r) * R;
+    const clampedZ = (z / r) * R;
+    const normal = new THREE.Vector3(clampedX / R, 0, clampedZ / R).normalize();
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+    return {
+      y: -R, // At sphere equator, surface has dropped by full radius R
+      normal,
+      quaternion,
+    };
+  }
+
+  // Normal upper-hemisphere spherical surface point
+  const sphereY = Math.sqrt(R2 - r2);
   const y = sphereY - R; // Top polar surface is at y = 0
   const normal = new THREE.Vector3(x, sphereY, z).normalize();
   const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
@@ -358,6 +390,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     // ==========================================
     // THE SUN (SOL) — CENTRAL STELLAR OBJECT
     // ==========================================
+    const sunScaleConfig = CELESTIAL_VISUAL_SCALES.sun;
     const sunGroup = new THREE.Group();
     sunGroup.position.set(-165, 85, -60);
     sunGroup.userData = {
@@ -367,8 +400,8 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       category: CELESTIAL_BODIES.sun.category,
     };
 
-    // Sun Photosphere Sphere (Scale: 42, Visual relative scale: 75, substantially larger than gas giants)
-    const sunGeo = new THREE.SphereGeometry(42.0, 48, 48);
+    // Sun Photosphere Sphere (Radius: 42.0, Educational visual scale: 75)
+    const sunGeo = new THREE.SphereGeometry(sunScaleConfig.renderedRadius, 48, 48);
     const sunMat = new THREE.MeshBasicMaterial({
       map: getSunTexture(),
       color: 0xffffff,
@@ -379,7 +412,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     interactiveObjectsRef.current.push(sunMesh);
 
     // Inner Chromosphere Glow Shell
-    const innerCoronaGeo = new THREE.SphereGeometry(43.5, 32, 32);
+    const innerCoronaGeo = new THREE.SphereGeometry(sunScaleConfig.renderedRadius * 1.035, 32, 32);
     const innerCoronaMat = new THREE.MeshBasicMaterial({
       color: 0xfbbf24,
       transparent: true,
@@ -390,7 +423,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     sunGroup.add(innerCorona);
 
     // Outer Solar Corona Atmosphere
-    const outerCoronaGeo = new THREE.SphereGeometry(46.0, 32, 32);
+    const outerCoronaGeo = new THREE.SphereGeometry(sunScaleConfig.renderedRadius * 1.095, 32, 32);
     const outerCoronaMat = new THREE.MeshBasicMaterial({
       color: 0xf97316,
       transparent: true,
@@ -401,7 +434,11 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     sunGroup.add(outerCorona);
 
     // Radial Solar Flare Corona Ring
-    const coronaRingGeo = new THREE.RingGeometry(42.5, 64.0, 48);
+    const coronaRingGeo = new THREE.RingGeometry(
+      sunScaleConfig.renderedRadius * 1.01, 
+      sunScaleConfig.renderedRadius * 1.52, 
+      48
+    );
     const coronaRingMat = new THREE.MeshBasicMaterial({
       color: 0xfde047,
       side: THREE.DoubleSide,
@@ -415,7 +452,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
     // Sun Billboarded 3D Name Label Sprite
     const sunLabelSprite = createPlanetLabelSprite(CELESTIAL_BODIES.sun.name, 'Primary Star • 1.39M km');
-    sunLabelSprite.position.set(0, 47.0, 0);
+    sunLabelSprite.position.set(0, sunScaleConfig.renderedRadius * 1.12, 0);
     sunLabelSprite.userData = { ...sunGroup.userData };
     sunGroup.add(sunLabelSprite);
     interactiveObjectsRef.current.push(sunLabelSprite);
@@ -615,7 +652,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.mercury.name,
         category: CELESTIAL_BODIES.mercury.category,
         pos: [-125, 68, -75],
-        scale: 11.5, // Visual scale 16 (> Moon 10)
+        scale: CELESTIAL_VISUAL_SCALES.mercury.renderedRadius, // 11.5 (Visual scale: 16)
         axialTiltDeg: 0.03,
         isRetrograde: false,
         rotationRate: 0.004,
@@ -630,7 +667,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.venus.name,
         category: CELESTIAL_BODIES.venus.category,
         pos: [-98, 72, -95],
-        scale: 15.8, // Visual scale 22 (> Moon 10)
+        scale: CELESTIAL_VISUAL_SCALES.venus.renderedRadius, // 15.8 (Visual scale: 22)
         axialTiltDeg: 177.3, // Retrograde spin
         isRetrograde: true,
         rotationRate: -0.003,
@@ -649,7 +686,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.earth.name,
         category: CELESTIAL_BODIES.earth.category,
         pos: [-68, 76, -112],
-        scale: 18.0, // Visual scale 25 (> Moon 10)
+        scale: CELESTIAL_VISUAL_SCALES.earth.renderedRadius, // 18.0 (Visual scale: 25)
         axialTiltDeg: 23.44,
         isRetrograde: false,
         rotationRate: 0.018,
@@ -669,7 +706,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.mars.name,
         category: CELESTIAL_BODIES.mars.category,
         pos: [-32, 78, -125],
-        scale: 13.6, // Visual scale 19 (> Moon 10)
+        scale: CELESTIAL_VISUAL_SCALES.mars.renderedRadius, // 13.6 (Visual scale: 19)
         axialTiltDeg: 25.19,
         isRetrograde: false,
         rotationRate: 0.017,
@@ -688,7 +725,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.jupiter.name,
         category: CELESTIAL_BODIES.jupiter.category,
         pos: [18, 80, -135],
-        scale: 34.5, // Visual scale 48 — massive gas giant
+        scale: CELESTIAL_VISUAL_SCALES.jupiter.renderedRadius, // 34.5 (Visual scale: 48)
         axialTiltDeg: 3.13,
         isRetrograde: false,
         rotationRate: 0.038, // Rapid ~10h rotation
@@ -709,7 +746,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.saturn.name,
         category: CELESTIAL_BODIES.saturn.category,
         pos: [72, 76, -125],
-        scale: 28.8, // Visual scale 40 — impressive ringed giant
+        scale: CELESTIAL_VISUAL_SCALES.saturn.renderedRadius, // 28.8 (Visual scale: 40)
         axialTiltDeg: 26.73,
         isRetrograde: false,
         rotationRate: 0.034,
@@ -730,7 +767,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.uranus.name,
         category: CELESTIAL_BODIES.uranus.category,
         pos: [118, 70, -105],
-        scale: 20.8, // Visual scale 29 (> Moon 10)
+        scale: CELESTIAL_VISUAL_SCALES.uranus.renderedRadius, // 20.8 (Visual scale: 29)
         axialTiltDeg: 97.77, // Extreme 98° tilt - rolls on its side!
         isRetrograde: true,
         rotationRate: -0.026,
@@ -751,7 +788,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.neptune.name,
         category: CELESTIAL_BODIES.neptune.category,
         pos: [154, 64, -85],
-        scale: 19.4, // Visual scale 27 (> Moon 10)
+        scale: CELESTIAL_VISUAL_SCALES.neptune.renderedRadius, // 19.4 (Visual scale: 27)
         axialTiltDeg: 28.32,
         isRetrograde: false,
         rotationRate: 0.028,
@@ -766,7 +803,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         name: CELESTIAL_BODIES.pluto.name,
         category: CELESTIAL_BODIES.pluto.category,
         pos: [182, 58, -65],
-        scale: 10.1, // Visual scale 14 (> Moon 10 in visual scale)
+        scale: CELESTIAL_VISUAL_SCALES.pluto.renderedRadius, // 10.1 (Visual scale: 14)
         axialTiltDeg: 122.53, // Retrograde
         isRetrograde: true,
         rotationRate: -0.010,
@@ -1992,7 +2029,9 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       const createProceduralAstronaut = (member: typeof crew[0], idx: number, targetPos: { x: number; z: number }) => {
         const astronaut = new THREE.Group();
         astronaut.name = `astronaut_proc_${member.id}`;
-        astronaut.position.set(targetPos.x, 0, targetPos.z);
+        const apt = getMoonSurfacePoint(targetPos.x, targetPos.z, MOON_ENVIRONMENT_RADIUS);
+        astronaut.position.set(targetPos.x, apt.y, targetPos.z);
+        astronaut.quaternion.copy(apt.quaternion);
         astronaut.userData = { 
           type: 'astronaut', 
           astronautId: member.id, 
@@ -2102,7 +2141,9 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           // Outer container to preserve idle animation bounce
           const astroWrapper = new THREE.Group();
           astroWrapper.name = `astronaut_glb_${member.id}`;
-          astroWrapper.position.set(targetPos.x, 0, targetPos.z);
+          const apt = getMoonSurfacePoint(targetPos.x, targetPos.z, MOON_ENVIRONMENT_RADIUS);
+          astroWrapper.position.set(targetPos.x, apt.y, targetPos.z);
+          astroWrapper.quaternion.copy(apt.quaternion);
           astroWrapper.userData = astronautUserData;
           astroWrapper.add(astroInstance);
 

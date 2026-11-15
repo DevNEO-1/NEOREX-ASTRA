@@ -29,6 +29,95 @@ export interface CelestialBodyInfo {
   colorAccent: string;
 }
 
+/**
+ * Educational Visual Scale Configuration.
+ * 
+ * In this cinematic educational view, celestial body sizes are deliberately exaggerated
+ * so that all nine planets (and Pluto) appear larger than the Moon, with gas giants Jupiter
+ * and Saturn as prominent worlds, and the Sun as the largest celestial anchor.
+ * 
+ * - educationalVisualScale: Dimensionless relative visual prominence score (reference scale: Moon = 10).
+ * - renderedRadius: Physical Three.js world-space sphere radius applied when constructing 3D meshes.
+ */
+export interface CelestialScaleConfig {
+  id: CelestialBodyId;
+  /** Relative educational visual scale score (Moon = 10, Pluto = 14 ... Sun = 75) */
+  educationalVisualScale: number;
+  /** 3D world-space rendered sphere radius in Three.js scene units */
+  renderedRadius: number;
+  /** Human-readable rationale for this educational sizing */
+  scaleRationale: string;
+}
+
+export const CELESTIAL_VISUAL_SCALES: Record<CelestialBodyId, CelestialScaleConfig> = {
+  moon: {
+    id: 'moon',
+    educationalVisualScale: 10,
+    renderedRadius: 38.0, // Central spherical Moon globe radius (MOON_ENVIRONMENT_RADIUS)
+    scaleRationale: 'Primary environmental reference globe; outpost sits on its surface.',
+  },
+  pluto: {
+    id: 'pluto',
+    educationalVisualScale: 14,
+    renderedRadius: 10.1,
+    scaleRationale: 'Exaggerated dwarf planet scale, visibly larger than Moon.',
+  },
+  mercury: {
+    id: 'mercury',
+    educationalVisualScale: 16,
+    renderedRadius: 11.5,
+    scaleRationale: 'Smallest major planet, noticeably larger than Pluto and Moon.',
+  },
+  mars: {
+    id: 'mars',
+    educationalVisualScale: 19,
+    renderedRadius: 13.6,
+    scaleRationale: 'Distinctive red terrestrial planet.',
+  },
+  venus: {
+    id: 'venus',
+    educationalVisualScale: 22,
+    renderedRadius: 15.8,
+    scaleRationale: 'Near-twin in size to Earth.',
+  },
+  earth: {
+    id: 'earth',
+    educationalVisualScale: 25,
+    renderedRadius: 18.0,
+    scaleRationale: 'Terrestrial reference world in the lunar sky.',
+  },
+  neptune: {
+    id: 'neptune',
+    educationalVisualScale: 27,
+    renderedRadius: 19.4,
+    scaleRationale: 'Outer ice giant, larger than Earth.',
+  },
+  uranus: {
+    id: 'uranus',
+    educationalVisualScale: 29,
+    renderedRadius: 20.8,
+    scaleRationale: 'Tilted cyan ice giant.',
+  },
+  saturn: {
+    id: 'saturn',
+    educationalVisualScale: 40,
+    renderedRadius: 28.8,
+    scaleRationale: 'Magnificent ringed gas giant.',
+  },
+  jupiter: {
+    id: 'jupiter',
+    educationalVisualScale: 48,
+    renderedRadius: 34.5,
+    scaleRationale: 'Largest planetary gas giant in the Solar System.',
+  },
+  sun: {
+    id: 'sun',
+    educationalVisualScale: 75,
+    renderedRadius: 42.0,
+    scaleRationale: 'Dominant stellar furnace and center of the Solar System.',
+  },
+};
+
 export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
   sun: {
     id: 'sun',
