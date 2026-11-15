@@ -151,83 +151,50 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
     let isAbandoned = false;
 
     try {
-      // 1. Initiate Gemini call with client abortSignal: try models.generateContent with gemini-3.8-flash, with interactions.create resilience
+      // 1. Initiate Gemini call with client abortSignal
       const generatePromise = (async (): Promise<string> => {
         if (!this.aiClient) return '';
 
-        let responseText = '';
-        let lastError: unknown = null;
-
-        // Primary: High-speed models.generateContent
+        // Primary: High-speed models.generateContent with gemini-3.8-flash
         if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
-          try {
-            const response = await (this.aiClient as any).models.generateContent({
-              model: this.config.geminiModel,
-              contents: contextTelemetryPrompt,
-              config: {
-                systemInstruction: systemPrompt,
-                temperature: 0.7,
-                maxOutputTokens: 256,
-                abortSignal: abortController.signal,
-              },
-            });
-            responseText = response?.text || '';
-            if (responseText) return responseText;
-          } catch (modelErr: unknown) {
-            lastError = modelErr;
-            console.warn('DrAstraService: models.generateContent caught error, attempting interactions.create:', modelErr instanceof Error ? modelErr.message : String(modelErr));
+          const response = await (this.aiClient as any).models.generateContent({
+            model: this.config.geminiModel,
+            contents: contextTelemetryPrompt,
+            config: {
+              systemInstruction: systemPrompt,
+              temperature: 0.7,
+              maxOutputTokens: 256,
+              abortSignal: abortController.signal,
+            },
+          });
+          return response?.text || '';
+        }
+
+        // Secondary: Interactions API fallback if models is not present
+        if ('interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
+          const interaction = await (this.aiClient as any).interactions.create({
+            model: this.config.geminiModel,
+            input: contextTelemetryPrompt,
+            system_instruction: systemPrompt,
+            generation_config: {
+              temperature: 0.7,
+              max_output_tokens: 256,
+            },
+            automatic_continuation: false,
+            store: false,
+          }, {
+            fetch_options: {
+              signal: abortController.signal,
+            },
+            timeout_ms: timeoutMs,
+          });
+
+          if (interaction?.output_text) {
+            return String(interaction.output_text);
           }
         }
 
-        // Secondary: Interactions API with thinking_level: 'low'
-        if (!responseText && 'interactions' in this.aiClient && typeof (this.aiClient as any).interactions?.create === 'function') {
-          try {
-            const interaction = await (this.aiClient as any).interactions.create({
-              model: this.config.geminiModel,
-              input: contextTelemetryPrompt,
-              system_instruction: systemPrompt,
-              generation_config: {
-                temperature: 0.7,
-                max_output_tokens: 256,
-                thinking_level: 'low',
-              },
-              automatic_continuation: false,
-              store: false,
-            }, {
-              fetch_options: {
-                signal: abortController.signal,
-              },
-              timeout_ms: timeoutMs,
-            });
-
-            if (interaction?.output_text) {
-              responseText = String(interaction.output_text);
-            } else if (Array.isArray(interaction?.steps)) {
-              for (const step of interaction.steps) {
-                if (step && (step.type === 'model_output' || step.event_type === 'model_output') && step.output) {
-                  if (typeof step.output === 'string') {
-                    responseText += step.output;
-                  } else if (Array.isArray(step.output)) {
-                    for (const part of step.output) {
-                      if (typeof part === 'string') responseText += part;
-                      else if (part && typeof part.text === 'string') responseText += part.text;
-                    }
-                  }
-                }
-              }
-            }
-            if (responseText) return responseText;
-          } catch (interactionErr: unknown) {
-            lastError = interactionErr;
-            console.warn('DrAstraService: Interactions API call caught error:', interactionErr instanceof Error ? interactionErr.message : String(interactionErr));
-          }
-        }
-
-        if (!responseText && lastError) {
-          throw lastError;
-        }
-
-        return responseText;
+        return '';
       })();
 
       // 2. Set timeout race with safe abandonment tracking
