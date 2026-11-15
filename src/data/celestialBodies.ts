@@ -1,5 +1,17 @@
+export type CelestialBodyId = 
+  | 'mercury'
+  | 'venus'
+  | 'earth'
+  | 'moon'
+  | 'mars'
+  | 'jupiter'
+  | 'saturn'
+  | 'uranus'
+  | 'neptune'
+  | 'pluto';
+
 export interface CelestialBodyInfo {
-  id: 'earth' | 'moon' | 'mars' | 'jupiter' | 'saturn';
+  id: CelestialBodyId;
   name: string;
   category: string;
   tagline: string;
@@ -121,5 +133,110 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
       'Saturn is the only planet in our solar system whose average density (0.687 g/cm³) is less than liquid water.',
     ],
     colorAccent: '#eab308',
+  },
+  mercury: {
+    id: 'mercury',
+    name: 'Mercury (Swift Planet)',
+    category: 'Innermost Terrestrial Planet',
+    tagline: 'Sun-scorched iron-core world with dramatic temperature extremes.',
+    diameterKm: '4,879 km (0.38 Earth)',
+    gravityMps2: '3.70 m/s² (0.38 g)',
+    dayLength: '58.6 Earth days (176 Earth days solar day)',
+    temperatureRange: '-180°C to +430°C',
+    atmosphere: 'Ultra-thin exosphere (Oxygen, Sodium, Hydrogen, Helium, Potassium)',
+    distanceFromSun: '57.9 million km (0.39 AU)',
+    moonsCount: '0',
+    campaignAvailability: 'future',
+    campaignStatusText: 'Future Inner Solar System Exploration',
+    nasaFacts: [
+      'Mercury has a massive metallic core comprising nearly 85% of its planetary radius.',
+      'Despite daytime surface temperatures exceeding 430°C, permanently shadowed polar craters harbor water ice.',
+      'Mercury experiences 3 rotations on its axis for every 2 orbits around the Sun (a 3:2 spin-orbit resonance).',
+    ],
+    colorAccent: '#94a3b8',
+  },
+  venus: {
+    id: 'venus',
+    name: 'Venus (Morning Star)',
+    category: 'Superheated Greenhouse Terrestrial',
+    tagline: 'Earth’s twin transformed by runaway greenhouse effect and crushing sulfuric atmosphere.',
+    diameterKm: '12,104 km (0.95 Earth)',
+    gravityMps2: '8.87 m/s² (0.90 g)',
+    dayLength: '243 Earth days (retrograde rotation)',
+    temperatureRange: '+465°C constant (hottest planet)',
+    atmosphere: '96.5% CO₂, 3.5% N₂ with thick clouds of sulfuric acid (9.3 MPa / 92 atm)',
+    distanceFromSun: '108.2 million km (0.72 AU)',
+    moonsCount: '0',
+    campaignAvailability: 'future',
+    campaignStatusText: 'Future Atmospheric Aerostat Mission Target',
+    nasaFacts: [
+      'Venus rotates clockwise (retrograde) and so slowly that its sidereal day (243 days) is longer than its orbital year (225 days).',
+      'Surface atmospheric pressure is equivalent to diving 900 meters deep in Earth oceans, enough to crush submarine hulls.',
+      'At 50-60 km altitude in Venusian clouds, pressure and temperature are remarkably Earth-like, suggesting potential aerial exploration.',
+    ],
+    colorAccent: '#f59e0b',
+  },
+  uranus: {
+    id: 'uranus',
+    name: 'Uranus (Ice Giant)',
+    category: 'Tilted Ice Giant',
+    tagline: 'Aquamarine world orbiting on its side with delicate vertical rings and extreme seasons.',
+    diameterKm: '50,724 km (4.0 Earth)',
+    gravityMps2: '8.69 m/s² (0.89 g)',
+    dayLength: '17 hours 14 min (retrograde rotation)',
+    temperatureRange: '-224°C (coldest planetary atmosphere in solar system)',
+    atmosphere: '82.5% H₂, 15.2% He, 2.3% CH₄ (methane absorbs red light giving cyan hue)',
+    distanceFromSun: '2.87 billion km (19.2 AU)',
+    moonsCount: '28 confirmed (Miranda, Ariel, Umbriel, Titania, Oberon)',
+    campaignAvailability: 'future',
+    campaignStatusText: 'Future Ice Giant Flagship Target',
+    nasaFacts: [
+      'Uranus has an extreme axial tilt of 97.8°, essentially rotating on its side, likely caused by a massive ancient protoplanet collision.',
+      'Possesses 13 known faint, dark rings composed of boulder-sized water ice and radiation-processed organics.',
+      'Moon Miranda boasts Verona Rupes, the tallest known cliff in the solar system at approximately 20 km high.',
+    ],
+    colorAccent: '#38bdf8',
+  },
+  neptune: {
+    id: 'neptune',
+    name: 'Neptune (Windy Giant)',
+    category: 'Deep Blue Ice Giant',
+    tagline: 'Vibrant cobalt ice giant harboring the fastest recorded supersonic winds in the solar system.',
+    diameterKm: '49,244 km (3.86 Earth)',
+    gravityMps2: '11.15 m/s² (1.14 g)',
+    dayLength: '16 hours 06 min',
+    temperatureRange: '-214°C (cloud tops)',
+    atmosphere: '80% H₂, 19% He, 1.5% CH₄ with trace hydrocarbons',
+    distanceFromSun: '4.50 billion km (30.1 AU)',
+    moonsCount: '16 confirmed (Triton, Proteus, Nereid)',
+    campaignAvailability: 'future',
+    campaignStatusText: 'Future Kuiper-Adjacent Mission Target',
+    nasaFacts: [
+      'Neptune exhibits supersonic equatorial wind storms clocked at over 2,100 km/h (1,300 mph), faster than Mach 1.5.',
+      'Its largest moon Triton orbits backwards (retrograde) as a captured Kuiper Belt object with active nitrogen cryovolcanoes.',
+      'Neptune was the first planet whose existence was mathematically predicted by Urbain Le Verrier before ever being seen through a telescope.',
+    ],
+    colorAccent: '#2563eb',
+  },
+  pluto: {
+    id: 'pluto',
+    name: 'Pluto (Dwarf Planet)',
+    category: 'Kuiper Belt Dwarf Planet',
+    tagline: 'Geologically active icy dwarf world featuring Sputnik Planitia’s heart-shaped nitrogen glacier.',
+    diameterKm: '2,376 km (0.18 Earth / 0.68 Moon)',
+    gravityMps2: '0.62 m/s² (0.063 g)',
+    dayLength: '6.39 Earth days (153.3 hours retrograde)',
+    temperatureRange: '-238°C to -228°C',
+    atmosphere: 'Tenuous nitrogen, methane, and carbon monoxide haze (expands at perihelion)',
+    distanceFromSun: '5.91 billion km (39.5 AU avg, eccentric 29.7 - 49.3 AU)',
+    moonsCount: '5 (Charon, Styx, Nix, Kerberos, Hydra)',
+    campaignAvailability: 'future',
+    campaignStatusText: 'Future Kuiper Belt Archeology Target',
+    nasaFacts: [
+      'Pluto and its largest moon Charon form a binary system whose gravitational barycenter lies outside Pluto’s surface.',
+      'Sputnik Planitia is a massive 1,000-km-wide basin of churning convective nitrogen-carbon monoxide ice that forms the left lobe of Tombaugh Regio (the "Heart").',
+      'Pluto was reclassified by the IAU as a Dwarf Planet in 2006 as the prototype for the vast class of trans-Neptunian plutinos.',
+    ],
+    colorAccent: '#c084fc',
   },
 };

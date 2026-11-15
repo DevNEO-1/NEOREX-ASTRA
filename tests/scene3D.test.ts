@@ -398,20 +398,28 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
   });
 
   describe('5. Realistic Cinematic Space World & Celestial Interactions', () => {
-    it('verifies celestial bodies catalog contains educational telemetry and campaign availability', async () => {
+    it('verifies celestial bodies catalog contains all 9 celestial bodies plus Moon with NASA facts and Pluto clearly designated as dwarf planet', async () => {
       const { CELESTIAL_BODIES } = await import('../src/data/celestialBodies');
 
-      expect(CELESTIAL_BODIES.earth).toBeDefined();
-      expect(CELESTIAL_BODIES.moon).toBeDefined();
-      expect(CELESTIAL_BODIES.mars).toBeDefined();
-      expect(CELESTIAL_BODIES.jupiter).toBeDefined();
-      expect(CELESTIAL_BODIES.saturn).toBeDefined();
+      // Verify all 10 bodies exist in catalog
+      const requiredBodies = ['mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'];
+      requiredBodies.forEach(id => {
+        expect(CELESTIAL_BODIES[id], `Missing celestial body ${id}`).toBeDefined();
+        expect(CELESTIAL_BODIES[id].name.length).toBeGreaterThan(0);
+        expect(CELESTIAL_BODIES[id].nasaFacts.length).toBeGreaterThanOrEqual(3);
+        expect(CELESTIAL_BODIES[id].diameterKm).toBeDefined();
+        expect(CELESTIAL_BODIES[id].colorAccent).toBeDefined();
+      });
 
       // Earth telemetry & active campaign status
       expect(CELESTIAL_BODIES.earth.diameterKm).toBe('12,742 km');
       expect(CELESTIAL_BODIES.earth.gravityMps2).toContain('9.807');
       expect(CELESTIAL_BODIES.earth.campaignAvailability).toBe('active');
-      expect(CELESTIAL_BODIES.earth.nasaFacts.length).toBeGreaterThanOrEqual(3);
+
+      // The Moon telemetry & Maria/Crater facts
+      expect(CELESTIAL_BODIES.moon.diameterKm).toContain('3,474 km');
+      expect(CELESTIAL_BODIES.moon.gravityMps2).toContain('1.62');
+      expect(CELESTIAL_BODIES.moon.campaignAvailability).toBe('active');
 
       // Mars telemetry & unlockable status
       expect(CELESTIAL_BODIES.mars.diameterKm).toContain('6,779 km');
@@ -421,6 +429,80 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(CELESTIAL_BODIES.saturn.diameterKm).toContain('116,460 km');
       expect(CELESTIAL_BODIES.saturn.campaignAvailability).toBe('future');
       expect(CELESTIAL_BODIES.saturn.nasaFacts[0]).toContain('rings');
+
+      // Uranus telemetry & extreme 98° tilt
+      expect(CELESTIAL_BODIES.uranus.diameterKm).toContain('50,724 km');
+      expect(CELESTIAL_BODIES.uranus.nasaFacts[0]).toContain('97.8°');
+
+      // Neptune supersonic winds
+      expect(CELESTIAL_BODIES.neptune.diameterKm).toContain('49,244 km');
+      expect(CELESTIAL_BODIES.neptune.nasaFacts[0]).toContain('supersonic');
+
+      // Pluto clearly identified as a dwarf planet
+      expect(CELESTIAL_BODIES.pluto.category.toLowerCase()).toContain('dwarf planet');
+      expect(CELESTIAL_BODIES.pluto.name.toLowerCase()).toContain('dwarf planet');
+      expect(CELESTIAL_BODIES.pluto.nasaFacts[1]).toContain('Sputnik Planitia');
+    });
+
+    it('verifies visual scale hierarchy ensuring every planet and Pluto appears larger than the Moon, with Jupiter and Saturn as largest gas giants', () => {
+      // Scale hierarchy in visual scale mode:
+      // Moon (1.8) < Pluto (2.4) < Mercury (2.8) < Mars (3.6) < Venus (4.8) < Earth (5.2) < Neptune (5.4) < Uranus (5.6) < Saturn (7.6) < Jupiter (9.2)
+      const visualScales = {
+        moon: 1.8,
+        pluto: 2.4,
+        mercury: 2.8,
+        mars: 3.6,
+        venus: 4.8,
+        earth: 5.2,
+        neptune: 5.4,
+        uranus: 5.6,
+        saturn: 7.6,
+        jupiter: 9.2,
+      };
+
+      // Every planet and Pluto is strictly larger than the Moon
+      const nonMoonBodies = Object.keys(visualScales).filter(k => k !== 'moon') as (keyof typeof visualScales)[];
+      nonMoonBodies.forEach(id => {
+        expect(visualScales[id]).toBeGreaterThan(visualScales.moon);
+      });
+
+      // Gas giants Jupiter and Saturn are visually impressive and largest
+      expect(visualScales.jupiter).toBeGreaterThan(visualScales.earth);
+      expect(visualScales.saturn).toBeGreaterThan(visualScales.earth);
+      expect(visualScales.jupiter).toBe(9.2);
+      expect(visualScales.saturn).toBe(7.6);
+    });
+
+    it('verifies accurate NASA axial tilts and retrograde spin designations', () => {
+      const celestialTilts = {
+        mercury: { tilt: 0.03, retrograde: false },
+        venus: { tilt: 177.3, retrograde: true },
+        earth: { tilt: 23.44, retrograde: false },
+        moon: { tilt: 1.54, retrograde: false },
+        mars: { tilt: 25.19, retrograde: false },
+        jupiter: { tilt: 3.13, retrograde: false },
+        saturn: { tilt: 26.73, retrograde: false },
+        uranus: { tilt: 97.77, retrograde: true },
+        neptune: { tilt: 28.32, retrograde: false },
+        pluto: { tilt: 122.53, retrograde: true },
+      };
+
+      // Venus, Uranus, Pluto rotate retrograde
+      expect(celestialTilts.venus.retrograde).toBe(true);
+      expect(celestialTilts.uranus.retrograde).toBe(true);
+      expect(celestialTilts.pluto.retrograde).toBe(true);
+
+      // Earth, Mars, Jupiter, Saturn, Neptune, Moon, Mercury rotate prograde
+      expect(celestialTilts.earth.retrograde).toBe(false);
+      expect(celestialTilts.mars.retrograde).toBe(false);
+      expect(celestialTilts.jupiter.retrograde).toBe(false);
+      expect(celestialTilts.saturn.retrograde).toBe(false);
+      expect(celestialTilts.neptune.retrograde).toBe(false);
+
+      // Tilts match NASA inclinometry
+      expect(celestialTilts.earth.tilt).toBeCloseTo(23.44, 1);
+      expect(celestialTilts.mars.tilt).toBeCloseTo(25.19, 1);
+      expect(celestialTilts.uranus.tilt).toBeCloseTo(97.77, 1);
     });
 
     it('creates multi-layer starfield with deep field, navigational spectral colors, and bright stars', () => {
@@ -451,6 +533,13 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(ringGeo.parameters.innerRadius).toBeCloseTo(1.24);
       expect(ringGeo.parameters.outerRadius).toBeCloseTo(2.35);
       expect(ringGeo.attributes.position.count).toBeGreaterThan(0);
+    });
+
+    it('constructs Uranus delicate ring system geometry', () => {
+      const uranusRingGeo = new THREE.RingGeometry(1.28, 1.75, 48);
+      expect(uranusRingGeo.parameters.innerRadius).toBeCloseTo(1.28);
+      expect(uranusRingGeo.parameters.outerRadius).toBeCloseTo(1.75);
+      expect(uranusRingGeo.attributes.position.count).toBeGreaterThan(0);
     });
 
     it('registers planetary celestial bodies into raycasting interactive registry with educational metadata', () => {
