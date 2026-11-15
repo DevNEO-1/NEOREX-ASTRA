@@ -52,13 +52,25 @@ export function createServer(customConfig?: ServerConfig, serviceOverride?: DrAs
   };
 
   // 1. Health check endpoint (exempt from CORS and origin requirements for orchestrator/cloud probes)
-  app.get('/api/health', (_req: Request, res: Response) => {
+  app.get('/api/health', async (_req: Request, res: Response) => {
+    let connectivityTest = 'not_tested';
+    try {
+      const probeStart = Date.now();
+      const probeRes = await fetch('https://generativelanguage.googleapis.com', {
+        signal: AbortSignal.timeout(4000)
+      });
+      connectivityTest = `reachable_status_${probeRes.status}_in_${Date.now() - probeStart}ms`;
+    } catch (probeErr: unknown) {
+      connectivityTest = `failed_${probeErr instanceof Error ? probeErr.message : String(probeErr)}`;
+    }
+
     res.status(200).json({
       status: 'healthy',
       service: 'neorex-astra-backend',
       geminiConfigured: Boolean(config.geminiApiKey),
       model: config.geminiModel,
       nodeVersion: process.version,
+      connectivityTest,
       timestamp: new Date().toISOString(),
       lastUpstreamDiagnosis: astraService.getLastUpstreamDiagnosis(),
     });
