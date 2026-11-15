@@ -156,6 +156,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
         if (!this.aiClient) return '';
 
         let responseText = '';
+        let lastError: unknown = null;
 
         // Primary: High-speed models.generateContent with thinkingBudget: 0
         if ('models' in this.aiClient && typeof (this.aiClient as any).models?.generateContent === 'function') {
@@ -176,6 +177,7 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
             responseText = response?.text || '';
             if (responseText) return responseText;
           } catch (modelErr: unknown) {
+            lastError = modelErr;
             console.warn('DrAstraService: models.generateContent caught error, attempting interactions.create:', modelErr instanceof Error ? modelErr.message : String(modelErr));
           }
         }
@@ -217,9 +219,15 @@ Respond directly to the student as Dr. Astra following your age-appropriate tone
                 }
               }
             }
+            if (responseText) return responseText;
           } catch (interactionErr: unknown) {
+            lastError = interactionErr;
             console.warn('DrAstraService: Interactions API call caught error:', interactionErr instanceof Error ? interactionErr.message : String(interactionErr));
           }
+        }
+
+        if (!responseText && lastError) {
+          throw lastError;
         }
 
         return responseText;
