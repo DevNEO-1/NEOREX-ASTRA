@@ -19,6 +19,7 @@ export interface CelestialBodyInfo {
   diameterKm: string;
   gravityMps2: string;
   dayLength: string;
+  orbitalPeriod: string;
   temperatureRange: string;
   atmosphere: string;
   distanceFromSun: string;
@@ -127,6 +128,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '1,392,700 km (109.3 Earths)',
     gravityMps2: '274.0 m/s² (27.9 g)',
     dayLength: '25 Earth days (equator) to 35 days (poles)',
+    orbitalPeriod: '~230 million years (Galactic Orbit)',
     temperatureRange: '5,500°C (photosphere) to 15,000,000°C (core)',
     atmosphere: '73.46% H₂, 24.85% He, 0.77% O₂, 0.29% C (Solar Corona)',
     distanceFromSun: '0 km (Center of Solar System)',
@@ -148,6 +150,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '12,742 km',
     gravityMps2: '9.807 m/s² (1.00 g)',
     dayLength: '24 hours 00 min',
+    orbitalPeriod: '365.25 Earth days (1.00 Solar Year)',
     temperatureRange: '-89°C to +58°C (avg 15°C)',
     atmosphere: '78% N₂, 21% O₂, 0.9% Ar, 0.04% CO₂ (101.3 kPa)',
     distanceFromSun: '149.6 million km (1.00 AU)',
@@ -169,6 +172,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '3,474 km (0.27 Earth)',
     gravityMps2: '1.62 m/s² (0.166 g / 1/6th)',
     dayLength: '29.5 Earth days (708 hours synodic)',
+    orbitalPeriod: '27.3 Earth days (sidereal lunar orbit)',
     temperatureRange: '-246°C (PSR craters) to +121°C (noon)',
     atmosphere: 'Ultra-tenuous exosphere (<10⁻¹⁰ Pa, He/Ne/Ar/H)',
     distanceFromSun: '384,400 km from Earth',
@@ -190,6 +194,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '6,779 km (0.53 Earth)',
     gravityMps2: '3.72 m/s² (0.38 g / 3/8th)',
     dayLength: '24 hours 37 min (1 Sol)',
+    orbitalPeriod: '687 Earth days (1.88 Earth years)',
     temperatureRange: '-140°C to +20°C (avg -63°C)',
     atmosphere: '95.3% CO₂, 2.6% N₂, 1.9% Ar (0.636 kPa)',
     distanceFromSun: '227.9 million km (1.52 AU)',
@@ -211,6 +216,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '139,820 km (11.0 Earth)',
     gravityMps2: '24.79 m/s² (2.53 g)',
     dayLength: '9 hours 55 min',
+    orbitalPeriod: '4,333 Earth days (11.86 Earth years)',
     temperatureRange: '-110°C (cloud tops)',
     atmosphere: '90% H₂, 10% He, traces of CH₄, NH₃, H₂O',
     distanceFromSun: '778.5 million km (5.20 AU)',
@@ -232,6 +238,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '116,460 km (9.14 Earth)',
     gravityMps2: '10.44 m/s² (1.06 g)',
     dayLength: '10 hours 33 min',
+    orbitalPeriod: '10,759 Earth days (29.45 Earth years)',
     temperatureRange: '-140°C (cloud tops)',
     atmosphere: '96.3% H₂, 3.25% He, 0.45% CH₄',
     distanceFromSun: '1.43 billion km (9.58 AU)',
@@ -253,6 +260,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '4,879 km (0.38 Earth)',
     gravityMps2: '3.70 m/s² (0.38 g)',
     dayLength: '58.6 Earth days (176 Earth days solar day)',
+    orbitalPeriod: '88.0 Earth days (0.24 Earth years)',
     temperatureRange: '-180°C to +430°C',
     atmosphere: 'Ultra-thin exosphere (Oxygen, Sodium, Hydrogen, Helium, Potassium)',
     distanceFromSun: '57.9 million km (0.39 AU)',
@@ -274,6 +282,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '12,104 km (0.95 Earth)',
     gravityMps2: '8.87 m/s² (0.90 g)',
     dayLength: '243 Earth days (retrograde rotation)',
+    orbitalPeriod: '224.7 Earth days (0.62 Earth years)',
     temperatureRange: '+465°C constant (hottest planet)',
     atmosphere: '96.5% CO₂, 3.5% N₂ with thick clouds of sulfuric acid (9.3 MPa / 92 atm)',
     distanceFromSun: '108.2 million km (0.72 AU)',
@@ -295,6 +304,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '50,724 km (4.0 Earth)',
     gravityMps2: '8.69 m/s² (0.89 g)',
     dayLength: '17 hours 14 min (retrograde rotation)',
+    orbitalPeriod: '30,687 Earth days (84.0 Earth years)',
     temperatureRange: '-224°C (coldest planetary atmosphere in solar system)',
     atmosphere: '82.5% H₂, 15.2% He, 2.3% CH₄ (methane absorbs red light giving cyan hue)',
     distanceFromSun: '2.87 billion km (19.2 AU)',
@@ -316,6 +326,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '49,244 km (3.86 Earth)',
     gravityMps2: '11.15 m/s² (1.14 g)',
     dayLength: '16 hours 06 min',
+    orbitalPeriod: '60,190 Earth days (164.8 Earth years)',
     temperatureRange: '-214°C (cloud tops)',
     atmosphere: '80% H₂, 19% He, 1.5% CH₄ with trace hydrocarbons',
     distanceFromSun: '4.50 billion km (30.1 AU)',
@@ -337,6 +348,7 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     diameterKm: '2,376 km (0.18 Earth / 0.68 Moon)',
     gravityMps2: '0.62 m/s² (0.063 g)',
     dayLength: '6.39 Earth days (153.3 hours retrograde)',
+    orbitalPeriod: '90,560 Earth days (248.0 Earth years)',
     temperatureRange: '-238°C to -228°C',
     atmosphere: 'Tenuous nitrogen, methane, and carbon monoxide haze (expands at perihelion)',
     distanceFromSun: '5.91 billion km (39.5 AU avg, eccentric 29.7 - 49.3 AU)',
@@ -351,3 +363,293 @@ export const CELESTIAL_BODIES: Record<string, CelestialBodyInfo> = {
     colorAccent: '#c084fc',
   },
 };
+
+export type PlanetOrbitId =
+  | 'mercury'
+  | 'venus'
+  | 'earth'
+  | 'mars'
+  | 'jupiter'
+  | 'saturn'
+  | 'uranus'
+  | 'neptune'
+  | 'pluto';
+
+export interface RingSystemConfig {
+  ringType: 'dust' | 'layered' | 'vertical' | 'arcs';
+  innerRadiusMultiplier: number;
+  outerRadiusMultiplier: number;
+  opacity: number;
+  roughness?: number;
+  tiltAngleX?: number;
+}
+
+export interface PlanetOrbitConfig {
+  id: PlanetOrbitId;
+  name: string;
+  order: number; // 1 to 9 (Mercury to Pluto)
+  /** Orbital radius / semi-major axis in Three.js world units */
+  orbitalRadius: number;
+  /** Orbital eccentricity (0 = circular, >0 = ellipse) */
+  eccentricity: number;
+  /** Orbital plane inclination in degrees relative to ecliptic */
+  inclinationDeg: number;
+  /** Argument of periapsis / longitude of ascending node in degrees */
+  longitudeDeg: number;
+  /** Orbital angular speed in simulation radians per second */
+  orbitalSpeed: number;
+  /** Initial orbital phase at t = 0 in radians */
+  initialPhase: number;
+  /** Axial tilt in degrees */
+  axialTiltDeg: number;
+  /** Retrograde spin flag (Venus, Uranus, Pluto) */
+  isRetrograde: boolean;
+  /** Self-rotation speed around tilted axis in radians per second */
+  rotationSpeed: number;
+  /** Ring system configuration if present (Jupiter, Saturn, Uranus, Neptune) */
+  ringSystem?: RingSystemConfig;
+}
+
+/**
+ * Planetary orbital configuration adhering to Keplerian mechanics with spacious educational gaps.
+ * Every planet's orbital radius is strictly greater than the previous planet's orbital radius.
+ */
+export const PLANET_ORBITS: Record<PlanetOrbitId, PlanetOrbitConfig> = {
+  mercury: {
+    id: 'mercury',
+    name: 'Mercury',
+    order: 1,
+    orbitalRadius: 95,
+    eccentricity: 0.08,
+    inclinationDeg: 7.0,
+    longitudeDeg: 48,
+    orbitalSpeed: 0.28,
+    initialPhase: 0.4,
+    axialTiltDeg: 0.03,
+    isRetrograde: false,
+    rotationSpeed: 0.006,
+  },
+  venus: {
+    id: 'venus',
+    name: 'Venus',
+    order: 2,
+    orbitalRadius: 145,
+    eccentricity: 0.02,
+    inclinationDeg: 3.4,
+    longitudeDeg: 76,
+    orbitalSpeed: 0.19,
+    initialPhase: 1.8,
+    axialTiltDeg: 177.3,
+    isRetrograde: true,
+    rotationSpeed: -0.004,
+  },
+  earth: {
+    id: 'earth',
+    name: 'Earth',
+    order: 3,
+    orbitalRadius: 200,
+    eccentricity: 0.03,
+    inclinationDeg: 0.0,
+    longitudeDeg: 0,
+    orbitalSpeed: 0.14,
+    initialPhase: 3.1,
+    axialTiltDeg: 23.44,
+    isRetrograde: false,
+    rotationSpeed: 0.024,
+  },
+  mars: {
+    id: 'mars',
+    name: 'Mars',
+    order: 4,
+    orbitalRadius: 260,
+    eccentricity: 0.06,
+    inclinationDeg: 1.85,
+    longitudeDeg: 49,
+    orbitalSpeed: 0.10,
+    initialPhase: 4.5,
+    axialTiltDeg: 25.19,
+    isRetrograde: false,
+    rotationSpeed: 0.022,
+  },
+  jupiter: {
+    id: 'jupiter',
+    name: 'Jupiter',
+    order: 5,
+    orbitalRadius: 360, // Spacious gap for Asteroid Belt
+    eccentricity: 0.04,
+    inclinationDeg: 1.3,
+    longitudeDeg: 100,
+    orbitalSpeed: 0.055,
+    initialPhase: 0.9,
+    axialTiltDeg: 3.13,
+    isRetrograde: false,
+    rotationSpeed: 0.045,
+    ringSystem: {
+      ringType: 'dust',
+      innerRadiusMultiplier: 1.15,
+      outerRadiusMultiplier: 1.35,
+      opacity: 0.22,
+      roughness: 0.9,
+    },
+  },
+  saturn: {
+    id: 'saturn',
+    name: 'Saturn',
+    order: 6,
+    orbitalRadius: 485,
+    eccentricity: 0.05,
+    inclinationDeg: 2.49,
+    longitudeDeg: 113,
+    orbitalSpeed: 0.038,
+    initialPhase: 2.6,
+    axialTiltDeg: 26.73,
+    isRetrograde: false,
+    rotationSpeed: 0.040,
+    ringSystem: {
+      ringType: 'layered',
+      innerRadiusMultiplier: 1.25,
+      outerRadiusMultiplier: 2.35,
+      opacity: 0.92,
+      roughness: 0.6,
+    },
+  },
+  uranus: {
+    id: 'uranus',
+    name: 'Uranus',
+    order: 7,
+    orbitalRadius: 615,
+    eccentricity: 0.04,
+    inclinationDeg: 0.77,
+    longitudeDeg: 74,
+    orbitalSpeed: 0.026,
+    initialPhase: 5.2,
+    axialTiltDeg: 97.77,
+    isRetrograde: true,
+    rotationSpeed: -0.030,
+    ringSystem: {
+      ringType: 'vertical',
+      innerRadiusMultiplier: 1.28,
+      outerRadiusMultiplier: 1.75,
+      opacity: 0.78,
+      roughness: 0.7,
+    },
+  },
+  neptune: {
+    id: 'neptune',
+    name: 'Neptune',
+    order: 8,
+    orbitalRadius: 740,
+    eccentricity: 0.02,
+    inclinationDeg: 1.77,
+    longitudeDeg: 131,
+    orbitalSpeed: 0.019,
+    initialPhase: 3.8,
+    axialTiltDeg: 28.32,
+    isRetrograde: false,
+    rotationSpeed: 0.032,
+    ringSystem: {
+      ringType: 'arcs',
+      innerRadiusMultiplier: 1.20,
+      outerRadiusMultiplier: 1.45,
+      opacity: 0.28,
+      roughness: 0.8,
+    },
+  },
+  pluto: {
+    id: 'pluto',
+    name: 'Pluto (Dwarf Planet)',
+    order: 9,
+    orbitalRadius: 865,
+    eccentricity: 0.14,
+    inclinationDeg: 17.16,
+    longitudeDeg: 110,
+    orbitalSpeed: 0.014,
+    initialPhase: 1.3,
+    axialTiltDeg: 122.53,
+    isRetrograde: true,
+    rotationSpeed: -0.012,
+  },
+};
+
+/**
+ * Computes 3D Cartesian position along an inclined, elliptical Keplerian orbital path.
+ * The Sun is at focus (0, 0, 0).
+ */
+export function calculateOrbitalPosition(
+  config: PlanetOrbitConfig,
+  elapsedTime: number
+): { x: number; y: number; z: number } {
+  const a = config.orbitalRadius;
+  const e = config.eccentricity;
+  const b = a * Math.sqrt(Math.max(0.01, 1 - e * e));
+  const c = a * e; // Focus offset
+  
+  const theta = config.initialPhase + config.orbitalSpeed * elapsedTime;
+  
+  // 2D ellipse in plane with Sun at (0, 0)
+  const xOrb = a * Math.cos(theta) - c;
+  const zOrb = b * Math.sin(theta);
+  
+  const incRad = (config.inclinationDeg * Math.PI) / 180;
+  const longRad = (config.longitudeDeg * Math.PI) / 180;
+  
+  const cosL = Math.cos(longRad);
+  const sinL = Math.sin(longRad);
+  const cosI = Math.cos(incRad);
+  const sinI = Math.sin(incRad);
+  
+  const x = xOrb * cosL - zOrb * cosI * sinL;
+  const y = zOrb * sinI;
+  const z = xOrb * sinL + zOrb * cosI * cosL;
+  
+  return { x, y, z };
+}
+
+/**
+ * Generates an array of 3D points forming the closed orbital trajectory line loop.
+ */
+export function generateOrbitPoints(
+  config: PlanetOrbitConfig,
+  segments: number = 128
+): { x: number; y: number; z: number }[] {
+  const points: { x: number; y: number; z: number }[] = [];
+  const a = config.orbitalRadius;
+  const e = config.eccentricity;
+  const b = a * Math.sqrt(Math.max(0.01, 1 - e * e));
+  const c = a * e;
+  
+  const incRad = (config.inclinationDeg * Math.PI) / 180;
+  const longRad = (config.longitudeDeg * Math.PI) / 180;
+  const cosL = Math.cos(longRad);
+  const sinL = Math.sin(longRad);
+  const cosI = Math.cos(incRad);
+  const sinI = Math.sin(incRad);
+  
+  for (let i = 0; i <= segments; i++) {
+    const theta = (i / segments) * Math.PI * 2;
+    const xOrb = a * Math.cos(theta) - c;
+    const zOrb = b * Math.sin(theta);
+    
+    const x = xOrb * cosL - zOrb * cosI * sinL;
+    const y = zOrb * sinI;
+    const z = xOrb * sinL + zOrb * cosI * cosL;
+    points.push({ x, y, z });
+  }
+  return points;
+}
+
+/**
+ * Updates deterministic simulation clock, respecting pause state and speed multiplier.
+ */
+export function updateSimulationClock(
+  currentSimTime: number,
+  deltaTimeSec: number,
+  isPaused: boolean,
+  speedMultiplier: number = 1.0
+): number {
+  if (isPaused) {
+    return currentSimTime;
+  }
+  return currentSimTime + Math.max(0, deltaTimeSec) * Math.max(0, speedMultiplier);
+}
+

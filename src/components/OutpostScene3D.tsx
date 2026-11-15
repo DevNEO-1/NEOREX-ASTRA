@@ -14,7 +14,9 @@ import {
   Globe2,
   AlertTriangle,
   Compass,
-  Film
+  Film,
+  Play,
+  Pause
 } from 'lucide-react';
 import { audioSystem } from '../utils/audioSystem';
 import { modelLoader } from '../utils/modelLoader';
@@ -24,6 +26,7 @@ import {
   getEarthCloudsTexture, 
   getMarsTexture, 
   getJupiterTexture, 
+  getJupiterRingTexture,
   getSaturnTexture, 
   getSaturnRingTexture,
   getMoonTexture,
@@ -33,13 +36,20 @@ import {
   getUranusTexture,
   getUranusRingTexture,
   getNeptuneTexture,
+  getNeptuneRingTexture,
   getPlutoTexture
 } from '../utils/celestialTextures';
 import { 
   CELESTIAL_BODIES, 
   CelestialBodyInfo, 
   CelestialBodyId, 
-  CELESTIAL_VISUAL_SCALES 
+  CELESTIAL_VISUAL_SCALES,
+  PLANET_ORBITS,
+  PlanetOrbitId,
+  PlanetOrbitConfig,
+  calculateOrbitalPosition,
+  generateOrbitPoints,
+  updateSimulationClock
 } from '../data/celestialBodies';
 import { PlanetInspectorModal } from './PlanetInspectorModal';
 import { createExplorationRover } from '../utils/roverProcedural';
@@ -48,6 +58,9 @@ export type CameraPresetView =
   | 'lunar_surface'
   | 'moon_globe'
   | 'solar_system'
+  | 'inner_planets'
+  | 'outer_planets'
+  | 'planet_focus'
   | 'sun'
   | 'mercury'
   | 'venus'
@@ -69,6 +82,9 @@ export type CameraPresetView =
   | 'rover';
 
 export const MOON_ENVIRONMENT_RADIUS = CELESTIAL_VISUAL_SCALES.moon.renderedRadius; // 38.0
+
+/** Central stationary orbital reference origin for the Sun and all planetary paths */
+export const SOLAR_SYSTEM_CENTER = new THREE.Vector3(-220, 160, -220);
 
 /**
  * Computes exact spherical Moon surface point, elevation, outward normal, and tangent orientation.
@@ -247,6 +263,15 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   const [isWebGlSupported, setIsWebGlSupported] = useState<boolean>(true);
   const [showAxes, setShowAxes] = useState<boolean>(true);
   const [isCinematicTour, setIsCinematicTour] = useState<boolean>(false);
+  const [isSimulationPaused, setIsSimulationPaused] = useState<boolean>(false);
+
+  // Synchronized refs for real-time animation loop access
+  const cameraViewRef = useRef<CameraPresetView>(cameraView);
+  cameraViewRef.current = cameraView;
+  const selectedPlanetRef = useRef<CelestialBodyInfo | null>(selectedPlanet);
+  selectedPlanetRef.current = selectedPlanet;
+  const isSimulationPausedRef = useRef<boolean>(false);
+  isSimulationPausedRef.current = isSimulationPaused;
 
   // Scene references
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -260,7 +285,16 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
   // Celestial cosmic system refs
   const celestialGroupRef = useRef<THREE.Group | null>(null);
   const planetsGroupRef = useRef<THREE.Group | null>(null);
-  const planetaryMeshesRef = useRef<{ id: string; mesh: THREE.Mesh; rotationRate: number }[]>([]);
+  const sunMeshRef = useRef<THREE.Mesh | null>(null);
+  const planetaryMeshesRef = useRef<{
+    id: CelestialBodyId;
+    orbitConfig?: PlanetOrbitConfig;
+    translationGroup?: THREE.Group;
+    tiltGroup?: THREE.Group;
+    selfRotationGroup?: THREE.Group;
+    mesh: THREE.Mesh;
+    rotationRate: number;
+  }[]>([]);
   const earthCloudsMeshRef = useRef<THREE.Mesh | null>(null);
   const saturnRingsMeshRef = useRef<THREE.Mesh | null>(null);
   const uranusRingsMeshRef = useRef<THREE.Mesh | null>(null);
@@ -367,14 +401,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     // Directional sunlight radiating from the Sun's coordinates toward the Moon base
     const sunLight = new THREE.DirectionalLight(0xfffbf2, 2.5);
     sunLightRef.current = sunLight;
-    sunLight.position.set(-165, 85, -60);
+    sunLight.position.copy(SOLAR_SYSTEM_CENTER);
     sunLight.target.position.set(0, 0, 0);
     scene.add(sunLight.target);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
     sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 400;
+    sunLight.shadow.camera.far = 600;
     sunLight.shadow.camera.left = -60;
     sunLight.shadow.camera.right = 60;
     sunLight.shadow.camera.top = 60;
@@ -388,11 +422,17 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     scene.add(celestialGroup);
 
     // ==========================================
-    // THE SUN (SOL) — CENTRAL STELLAR OBJECT
+    // THE SOLAR SYSTEM CONTAINER & CENTRAL SUN
     // ==========================================
+    const solarSystemGroup = new THREE.Group();
+    solarSystemGroup.name = 'solar_system_root';
+    solarSystemGroup.position.copy(SOLAR_SYSTEM_CENTER);
+    celestialGroup.add(solarSystemGroup);
+
     const sunScaleConfig = CELESTIAL_VISUAL_SCALES.sun;
     const sunGroup = new THREE.Group();
-    sunGroup.position.set(-165, 85, -60);
+    // The Sun is stationary at the orbital origin (0, 0, 0)
+    sunGroup.position.set(0, 0, 0);
     sunGroup.userData = {
       type: 'planet',
       planetId: 'sun',
@@ -409,6 +449,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     const sunMesh = new THREE.Mesh(sunGeo, sunMat);
     sunMesh.userData = { ...sunGroup.userData };
     sunGroup.add(sunMesh);
+    sunMeshRef.current = sunMesh;
     interactiveObjectsRef.current.push(sunMesh);
 
     // Inner Chromosphere Glow Shell
@@ -452,14 +493,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
 
     // Sun Billboarded 3D Name Label Sprite
     const sunLabelSprite = createPlanetLabelSprite(CELESTIAL_BODIES.sun.name, 'Primary Star • 1.39M km');
-    sunLabelSprite.position.set(0, sunScaleConfig.renderedRadius * 1.12, 0);
+    sunLabelSprite.position.set(0, sunScaleConfig.renderedRadius * 1.15, 0);
     sunLabelSprite.userData = { ...sunGroup.userData };
     sunGroup.add(sunLabelSprite);
     interactiveObjectsRef.current.push(sunLabelSprite);
 
-    celestialGroup.add(sunGroup);
+    solarSystemGroup.add(sunGroup);
 
-    // Continuous rotation for Sun
+    // Register independent rotation for Sun
     planetaryMeshesRef.current.push({
       id: 'sun',
       mesh: sunMesh,
@@ -605,24 +646,22 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     const reflectionNebula = new THREE.Points(refNebulaGeo, refNebulaMat);
     celestialGroup.add(reflectionNebula);
 
-    // 3. Interactive Rotating Planetary System (All 9 Celestial Bodies + Moon)
+    // 3. Interactive Rotating Planetary System (All 9 Celestial Bodies + Sun)
     const planetsGroup = new THREE.Group();
+    planetsGroup.name = 'planets_orbital_container';
     planetsGroupRef.current = planetsGroup;
-    celestialGroup.add(planetsGroup);
+    solarSystemGroup.add(planetsGroup);
 
     // Shared sphere geometry for optimal WebGL performance
     const planetSphereGeo = new THREE.SphereGeometry(1, 32, 32);
 
-    // Reset reference collections
-    planetaryMeshesRef.current = [];
     axesGroupsRef.current = [];
 
-    // Comprehensive NASA celestial body configurations arranged in non-overlapping orbital arc
+    // Comprehensive NASA celestial body configurations with Keplerian orbital parameters
     const celestialConfigs: {
       id: CelestialBodyId;
       name: string;
       category: string;
-      pos: [number, number, number];
       scale: number;
       axialTiltDeg: number;
       isRetrograde: boolean;
@@ -643,34 +682,35 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       ringsOuterRadius?: number;
       ringsTiltX?: number;
       ringsOpacity?: number;
+      ringsRoughness?: number;
       subMoons?: { dist: number; angle: number; color: number }[];
       labelSubtitle: string;
+      orbitColor: number;
     }[] = [
       // 1. Mercury (Innermost planet)
       {
         id: 'mercury',
         name: CELESTIAL_BODIES.mercury.name,
         category: CELESTIAL_BODIES.mercury.category,
-        pos: [-125, 68, -75],
         scale: CELESTIAL_VISUAL_SCALES.mercury.renderedRadius, // 11.5 (Visual scale: 16)
-        axialTiltDeg: 0.03,
-        isRetrograde: false,
-        rotationRate: 0.004,
+        axialTiltDeg: PLANET_ORBITS.mercury.axialTiltDeg,
+        isRetrograde: PLANET_ORBITS.mercury.isRetrograde,
+        rotationRate: PLANET_ORBITS.mercury.rotationSpeed,
         textureGetter: getMercuryTexture,
         roughness: 0.90,
         metalness: 0.08,
         labelSubtitle: '0.39 AU • Swift Planet',
+        orbitColor: 0x94a3b8,
       },
       // 2. Venus (Greenhouse twin)
       {
         id: 'venus',
         name: CELESTIAL_BODIES.venus.name,
         category: CELESTIAL_BODIES.venus.category,
-        pos: [-98, 72, -95],
         scale: CELESTIAL_VISUAL_SCALES.venus.renderedRadius, // 15.8 (Visual scale: 22)
-        axialTiltDeg: 177.3, // Retrograde spin
-        isRetrograde: true,
-        rotationRate: -0.003,
+        axialTiltDeg: PLANET_ORBITS.venus.axialTiltDeg, // Retrograde spin
+        isRetrograde: PLANET_ORBITS.venus.isRetrograde,
+        rotationRate: PLANET_ORBITS.venus.rotationSpeed,
         textureGetter: getVenusTexture,
         roughness: 0.45,
         metalness: 0.04,
@@ -679,17 +719,17 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         haloOpacity: 0.22,
         haloScale: [1.02, 1.15],
         labelSubtitle: '0.72 AU • Greenhouse',
+        orbitColor: 0xf59e0b,
       },
       // 3. Earth (Home world)
       {
         id: 'earth',
         name: CELESTIAL_BODIES.earth.name,
         category: CELESTIAL_BODIES.earth.category,
-        pos: [-68, 76, -112],
         scale: CELESTIAL_VISUAL_SCALES.earth.renderedRadius, // 18.0 (Visual scale: 25)
-        axialTiltDeg: 23.44,
-        isRetrograde: false,
-        rotationRate: 0.018,
+        axialTiltDeg: PLANET_ORBITS.earth.axialTiltDeg,
+        isRetrograde: PLANET_ORBITS.earth.isRetrograde,
+        rotationRate: PLANET_ORBITS.earth.rotationSpeed,
         textureGetter: getEarthTexture,
         roughness: 0.65,
         metalness: 0.10,
@@ -699,17 +739,17 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         haloOpacity: 0.35,
         haloScale: [1.03, 1.25],
         labelSubtitle: '1.00 AU • Home World',
+        orbitColor: 0x3b82f6,
       },
       // 4. Mars (Red Planet)
       {
         id: 'mars',
         name: CELESTIAL_BODIES.mars.name,
         category: CELESTIAL_BODIES.mars.category,
-        pos: [-32, 78, -125],
         scale: CELESTIAL_VISUAL_SCALES.mars.renderedRadius, // 13.6 (Visual scale: 19)
-        axialTiltDeg: 25.19,
-        isRetrograde: false,
-        rotationRate: 0.017,
+        axialTiltDeg: PLANET_ORBITS.mars.axialTiltDeg,
+        isRetrograde: PLANET_ORBITS.mars.isRetrograde,
+        rotationRate: PLANET_ORBITS.mars.rotationSpeed,
         textureGetter: getMarsTexture,
         roughness: 0.85,
         metalness: 0.05,
@@ -718,20 +758,26 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         haloOpacity: 0.22,
         haloScale: [1.02, 1.15],
         labelSubtitle: '1.52 AU • Red Planet',
+        orbitColor: 0xea580c,
       },
-      // 5. Jupiter (Visually impressive gas giant with Galilean moons)
+      // 5. Jupiter (Gas giant with dust ring and Galilean moons)
       {
         id: 'jupiter',
         name: CELESTIAL_BODIES.jupiter.name,
         category: CELESTIAL_BODIES.jupiter.category,
-        pos: [18, 80, -135],
         scale: CELESTIAL_VISUAL_SCALES.jupiter.renderedRadius, // 34.5 (Visual scale: 48)
-        axialTiltDeg: 3.13,
-        isRetrograde: false,
-        rotationRate: 0.038, // Rapid ~10h rotation
+        axialTiltDeg: PLANET_ORBITS.jupiter.axialTiltDeg,
+        isRetrograde: PLANET_ORBITS.jupiter.isRetrograde,
+        rotationRate: PLANET_ORBITS.jupiter.rotationSpeed,
         textureGetter: getJupiterTexture,
         roughness: 0.70,
         metalness: 0.05,
+        hasRings: true,
+        ringsTextureGetter: getJupiterRingTexture,
+        ringsInnerRadius: PLANET_ORBITS.jupiter.ringSystem?.innerRadiusMultiplier || 1.15,
+        ringsOuterRadius: PLANET_ORBITS.jupiter.ringSystem?.outerRadiusMultiplier || 1.35,
+        ringsOpacity: PLANET_ORBITS.jupiter.ringSystem?.opacity || 0.22,
+        ringsRoughness: 0.85,
         subMoons: [
           { dist: 1.8, angle: 0.4, color: 0xfef08a },
           { dist: 2.3, angle: 1.8, color: 0xffedd5 },
@@ -739,97 +785,136 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           { dist: 4.0, angle: 4.9, color: 0xa8a29e },
         ],
         labelSubtitle: '5.20 AU • Gas Giant',
+        orbitColor: 0xd97706,
       },
-      // 6. Saturn (Golden gas giant with prominent 3D rings)
+      // 6. Saturn (Golden gas giant with spectacular layered 3D rings)
       {
         id: 'saturn',
         name: CELESTIAL_BODIES.saturn.name,
         category: CELESTIAL_BODIES.saturn.category,
-        pos: [72, 76, -125],
         scale: CELESTIAL_VISUAL_SCALES.saturn.renderedRadius, // 28.8 (Visual scale: 40)
-        axialTiltDeg: 26.73,
-        isRetrograde: false,
-        rotationRate: 0.034,
+        axialTiltDeg: PLANET_ORBITS.saturn.axialTiltDeg,
+        isRetrograde: PLANET_ORBITS.saturn.isRetrograde,
+        rotationRate: PLANET_ORBITS.saturn.rotationSpeed,
         textureGetter: getSaturnTexture,
         roughness: 0.75,
         metalness: 0.05,
         hasRings: true,
         ringsTextureGetter: getSaturnRingTexture,
-        ringsInnerRadius: 1.24,
-        ringsOuterRadius: 2.35,
+        ringsInnerRadius: PLANET_ORBITS.saturn.ringSystem?.innerRadiusMultiplier || 1.25,
+        ringsOuterRadius: PLANET_ORBITS.saturn.ringSystem?.outerRadiusMultiplier || 2.35,
         ringsTiltX: Math.PI / 2,
-        ringsOpacity: 0.92,
+        ringsOpacity: PLANET_ORBITS.saturn.ringSystem?.opacity || 0.92,
+        ringsRoughness: 0.6,
         labelSubtitle: '9.58 AU • Ringed Giant',
+        orbitColor: 0xeab308,
       },
       // 7. Uranus (Tilted cyan ice giant with delicate vertical rings)
       {
         id: 'uranus',
         name: CELESTIAL_BODIES.uranus.name,
         category: CELESTIAL_BODIES.uranus.category,
-        pos: [118, 70, -105],
         scale: CELESTIAL_VISUAL_SCALES.uranus.renderedRadius, // 20.8 (Visual scale: 29)
-        axialTiltDeg: 97.77, // Extreme 98° tilt - rolls on its side!
-        isRetrograde: true,
-        rotationRate: -0.026,
+        axialTiltDeg: PLANET_ORBITS.uranus.axialTiltDeg, // Extreme 98° tilt
+        isRetrograde: PLANET_ORBITS.uranus.isRetrograde,
+        rotationRate: PLANET_ORBITS.uranus.rotationSpeed,
         textureGetter: getUranusTexture,
         roughness: 0.65,
         metalness: 0.05,
         hasRings: true,
         ringsTextureGetter: getUranusRingTexture,
-        ringsInnerRadius: 1.28,
-        ringsOuterRadius: 1.75,
+        ringsInnerRadius: PLANET_ORBITS.uranus.ringSystem?.innerRadiusMultiplier || 1.28,
+        ringsOuterRadius: PLANET_ORBITS.uranus.ringSystem?.outerRadiusMultiplier || 1.75,
         ringsTiltX: Math.PI / 2,
-        ringsOpacity: 0.75,
+        ringsOpacity: PLANET_ORBITS.uranus.ringSystem?.opacity || 0.78,
+        ringsRoughness: 0.7,
         labelSubtitle: '19.2 AU • Ice Giant',
+        orbitColor: 0x38bdf8,
       },
-      // 8. Neptune (Vibrant deep blue ice giant with supersonic winds)
+      // 8. Neptune (Deep blue ice giant with supersonic winds and ring arcs)
       {
         id: 'neptune',
         name: CELESTIAL_BODIES.neptune.name,
         category: CELESTIAL_BODIES.neptune.category,
-        pos: [154, 64, -85],
         scale: CELESTIAL_VISUAL_SCALES.neptune.renderedRadius, // 19.4 (Visual scale: 27)
-        axialTiltDeg: 28.32,
-        isRetrograde: false,
-        rotationRate: 0.028,
+        axialTiltDeg: PLANET_ORBITS.neptune.axialTiltDeg,
+        isRetrograde: PLANET_ORBITS.neptune.isRetrograde,
+        rotationRate: PLANET_ORBITS.neptune.rotationSpeed,
         textureGetter: getNeptuneTexture,
         roughness: 0.65,
         metalness: 0.05,
+        hasRings: true,
+        ringsTextureGetter: getNeptuneRingTexture,
+        ringsInnerRadius: PLANET_ORBITS.neptune.ringSystem?.innerRadiusMultiplier || 1.20,
+        ringsOuterRadius: PLANET_ORBITS.neptune.ringSystem?.outerRadiusMultiplier || 1.45,
+        ringsTiltX: Math.PI / 2,
+        ringsOpacity: PLANET_ORBITS.neptune.ringSystem?.opacity || 0.32,
+        ringsRoughness: 0.8,
         labelSubtitle: '30.1 AU • Windy Giant',
+        orbitColor: 0x2563eb,
       },
       // 9. Pluto (Dwarf Planet with heart-shaped nitrogen glacier)
       {
         id: 'pluto',
         name: CELESTIAL_BODIES.pluto.name,
         category: CELESTIAL_BODIES.pluto.category,
-        pos: [182, 58, -65],
         scale: CELESTIAL_VISUAL_SCALES.pluto.renderedRadius, // 10.1 (Visual scale: 14)
-        axialTiltDeg: 122.53, // Retrograde
-        isRetrograde: true,
-        rotationRate: -0.010,
+        axialTiltDeg: PLANET_ORBITS.pluto.axialTiltDeg, // Retrograde
+        isRetrograde: PLANET_ORBITS.pluto.isRetrograde,
+        rotationRate: PLANET_ORBITS.pluto.rotationSpeed,
         textureGetter: getPlutoTexture,
         roughness: 0.90,
         metalness: 0.05,
         labelSubtitle: '39.5 AU • Dwarf Planet',
+        orbitColor: 0xc084fc,
       },
     ];
 
     celestialConfigs.forEach((c) => {
-      const planetGroup = new THREE.Group();
-      planetGroup.position.set(c.pos[0], c.pos[1], c.pos[2]);
-      planetGroup.scale.set(c.scale, c.scale, c.scale);
-      planetGroup.userData = {
+      const orbitConfig = PLANET_ORBITS[c.id as PlanetOrbitId];
+
+      // 1. Thin, elegant 3D orbital trajectory line loop
+      if (orbitConfig) {
+        const orbitPts = generateOrbitPoints(orbitConfig, 128);
+        const orbitGeo = new THREE.BufferGeometry().setFromPoints(
+          orbitPts.map((p) => new THREE.Vector3(p.x, p.y, p.z))
+        );
+        const orbitMat = new THREE.LineBasicMaterial({
+          color: c.orbitColor || 0x38bdf8,
+          transparent: true,
+          opacity: 0.35,
+          linewidth: 1,
+        });
+        const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat);
+        orbitLine.name = `${c.id}_orbit_trajectory`;
+        planetsGroup.add(orbitLine);
+      }
+
+      // 2. Orbital Translation Group (moves along inclined ellipse)
+      const translationGroup = new THREE.Group();
+      translationGroup.name = `${c.id}_translation_group`;
+      if (orbitConfig) {
+        const initPos = calculateOrbitalPosition(orbitConfig, 0);
+        translationGroup.position.set(initPos.x, initPos.y, initPos.z);
+      }
+      translationGroup.userData = {
         type: 'planet',
         planetId: c.id,
         title: c.name,
         category: c.category,
       };
+      planetsGroup.add(translationGroup);
 
-      // Tilted axis group matching accurate NASA axial inclination
+      // 3. Tilted axis group matching accurate NASA axial inclination
       const tiltGroup = new THREE.Group();
       tiltGroup.name = `${c.id}_tilt_group`;
       tiltGroup.rotation.z = THREE.MathUtils.degToRad(c.axialTiltDeg);
-      planetGroup.add(tiltGroup);
+      translationGroup.add(tiltGroup);
+
+      // 4. Planetary self-rotation group (rotates around its tilted axis)
+      const selfRotationGroup = new THREE.Group();
+      selfRotationGroup.name = `${c.id}_self_rotation_group`;
+      tiltGroup.add(selfRotationGroup);
 
       // Planet sphere mesh
       const planetMat = new THREE.MeshStandardMaterial({
@@ -840,12 +925,17 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         bumpScale: c.bumpScale || 0,
       });
       const planetMesh = new THREE.Mesh(planetSphereGeo, planetMat);
-      planetMesh.userData = { ...planetGroup.userData };
-      tiltGroup.add(planetMesh);
+      planetMesh.scale.set(c.scale, c.scale, c.scale);
+      planetMesh.userData = { ...translationGroup.userData };
+      selfRotationGroup.add(planetMesh);
 
-      // Register for independent continuous axial rotation animation
+      // Register for independent continuous animation
       planetaryMeshesRef.current.push({
         id: c.id,
+        orbitConfig,
+        translationGroup,
+        tiltGroup,
+        selfRotationGroup,
         mesh: planetMesh,
         rotationRate: c.rotationRate,
       });
@@ -861,14 +951,14 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           depthWrite: false,
         });
         const earthClouds = new THREE.Mesh(planetSphereGeo, earthCloudsMat);
-        earthClouds.scale.set(1.02, 1.02, 1.02);
+        earthClouds.scale.set(c.scale * 1.02, c.scale * 1.02, c.scale * 1.02);
         earthCloudsMeshRef.current = earthClouds;
-        tiltGroup.add(earthClouds);
+        selfRotationGroup.add(earthClouds);
       }
 
       // Atmospheric Rayleigh scattering halo
       if (c.hasAtmosphereHalo && c.haloScale) {
-        const haloGeo = new THREE.RingGeometry(c.haloScale[0], c.haloScale[1], 32);
+        const haloGeo = new THREE.RingGeometry(c.scale * c.haloScale[0], c.scale * c.haloScale[1], 32);
         const haloMat = new THREE.MeshBasicMaterial({
           color: c.haloColor || 0x60a5fa,
           side: THREE.DoubleSide,
@@ -878,56 +968,56 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         });
         const haloMesh = new THREE.Mesh(haloGeo, haloMat);
         haloMesh.lookAt(camera.position);
-        planetGroup.add(haloMesh);
+        translationGroup.add(haloMesh);
       }
 
-      // Planetary 3D Ring Systems (Saturn & Uranus)
+      // Planetary 3D Ring Systems (Jupiter, Saturn, Uranus, Neptune)
       if (c.hasRings && c.ringsTextureGetter) {
-        const ringGeo = new THREE.RingGeometry(c.ringsInnerRadius || 1.2, c.ringsOuterRadius || 2.2, 48);
+        const ringInner = c.scale * (c.ringsInnerRadius || 1.2);
+        const ringOuter = c.scale * (c.ringsOuterRadius || 2.2);
+        const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 64);
         const ringMat = new THREE.MeshStandardMaterial({
           map: c.ringsTextureGetter(),
           side: THREE.DoubleSide,
           transparent: true,
           opacity: c.ringsOpacity ?? 0.85,
-          roughness: 0.6,
+          roughness: c.ringsRoughness ?? 0.6,
           depthWrite: false,
         });
         const ringMesh = new THREE.Mesh(ringGeo, ringMat);
         ringMesh.rotation.x = c.ringsTiltX ?? (Math.PI / 2);
         if (c.id === 'saturn') saturnRingsMeshRef.current = ringMesh;
         if (c.id === 'uranus') uranusRingsMeshRef.current = ringMesh;
-        tiltGroup.add(ringMesh);
+        selfRotationGroup.add(ringMesh);
       }
 
       // Natural Satellites / Galilean Moons (Jupiter)
       if (c.subMoons && c.subMoons.length > 0) {
-        const moonSpeckGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        const moonSpeckGeo = new THREE.SphereGeometry(c.scale * 0.05, 8, 8);
         c.subMoons.forEach((mConfig) => {
           const moonSpeckMat = new THREE.MeshBasicMaterial({ color: mConfig.color });
           const moonSpeck = new THREE.Mesh(moonSpeckGeo, moonSpeckMat);
           moonSpeck.position.set(
-            Math.cos(mConfig.angle) * mConfig.dist,
-            Math.sin(mConfig.angle) * 0.2,
-            Math.sin(mConfig.angle) * mConfig.dist
+            Math.cos(mConfig.angle) * (c.scale * mConfig.dist),
+            Math.sin(mConfig.angle) * (c.scale * 0.15),
+            Math.sin(mConfig.angle) * (c.scale * mConfig.dist)
           );
-          planetGroup.add(moonSpeck);
+          translationGroup.add(moonSpeck);
         });
       }
 
       // Scientific visualization rotation axis passing through north & south poles with directional spin arrow
-      const axisGroup = createRotationAxisGroup(1.0, c.isRetrograde);
+      const axisGroup = createRotationAxisGroup(c.scale, c.isRetrograde);
       axisGroup.visible = showAxesRef.current;
       axesGroupsRef.current.push(axisGroup);
       tiltGroup.add(axisGroup);
 
       // Billboarded 3D Name Label Sprite
       const labelSprite = createPlanetLabelSprite(c.name, c.labelSubtitle);
-      labelSprite.position.set(0, 1.55, 0);
-      labelSprite.userData = { ...planetGroup.userData };
-      planetGroup.add(labelSprite);
+      labelSprite.position.set(0, c.scale * 1.35, 0);
+      labelSprite.userData = { ...translationGroup.userData };
+      translationGroup.add(labelSprite);
       interactiveObjectsRef.current.push(labelSprite);
-
-      planetsGroup.add(planetGroup);
     });
 
     // 4. Occasional Shooting Stars / Meteors Pool
@@ -1357,11 +1447,38 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
     // ==========================================
     // INTERACTION & ANIMATION LOOP
     // ==========================================
-    let clock = new THREE.Clock();
+    const clock = new THREE.Clock();
+    let lastTime = performance.now();
+    let simTime = 0;
 
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
       const elapsedTime = clock.getElapsedTime();
+      const now = performance.now();
+      const deltaSec = (now - lastTime) / 1000;
+      lastTime = now;
+
+      const isMotionReduced = isReducedMotionRef.current;
+      const speedMult = isMotionReduced ? 0.2 : 1.0;
+
+      // Update deterministic simulation clock respecting pause control and accessibility
+      simTime = updateSimulationClock(simTime, deltaSec, isSimulationPausedRef.current, speedMult);
+
+      // Camera dynamic tracking when focusing on an orbiting planet
+      const currentPreset = cameraViewRef.current;
+      if (currentPreset === 'planet_focus' || [
+        'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'
+      ].includes(currentPreset)) {
+        const targetId = currentPreset === 'planet_focus' 
+          ? (selectedPlanetRef.current?.id || 'saturn') 
+          : currentPreset;
+        const targetPlanet = planetaryMeshesRef.current.find(item => item.id === targetId);
+        if (targetPlanet && targetPlanet.translationGroup) {
+          const worldPos = new THREE.Vector3();
+          targetPlanet.translationGroup.getWorldPosition(worldPos);
+          mouseStateRef.current.targetLookAt.copy(worldPos);
+        }
+      }
 
       // Smooth camera position and lookAt interpolation
       const m = mouseStateRef.current;
@@ -1374,18 +1491,30 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
       camera.position.set(camX, Math.max(2.5, camY), camZ);
       camera.lookAt(m.currentLookAt);
 
-      // Planetary axial rotations (All 9 Celestial Bodies + Moon)
-      const isMotionReduced = isReducedMotionRef.current;
-      const speedMult = isMotionReduced ? 0.2 : 1.0;
+      // Sun independent axial rotation around its own axis
+      if (sunMeshRef.current) {
+        sunMeshRef.current.rotation.y = simTime * 0.005;
+      }
 
-      // Animate independent continuous rotation for every celestial body around its tilted axis
+      // Independent continuous orbital revolution & axial spin for every planet
       planetaryMeshesRef.current.forEach((item) => {
-        item.mesh.rotation.y = elapsedTime * item.rotationRate * speedMult;
+        // 1. Orbital position translation along inclined Keplerian ellipse
+        if (item.translationGroup && item.orbitConfig) {
+          const orbPos = calculateOrbitalPosition(item.orbitConfig, simTime);
+          item.translationGroup.position.set(orbPos.x, orbPos.y, orbPos.z);
+        }
+
+        // 2. Axial self-rotation around tilted axis (independent of orbital motion)
+        if (item.selfRotationGroup) {
+          item.selfRotationGroup.rotation.y = simTime * item.rotationRate;
+        } else {
+          item.mesh.rotation.y = simTime * item.rotationRate;
+        }
       });
 
       // Earth cloud layer differential rotation
       if (earthCloudsMeshRef.current) {
-        earthCloudsMeshRef.current.rotation.y = elapsedTime * 0.024 * speedMult;
+        earthCloudsMeshRef.current.rotation.y = simTime * 0.024;
       }
 
       // Smooth auto-panning in Cinematic Tour presentation mode
@@ -2218,71 +2347,56 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         m.targetDistance = 115;
         break;
       case 'solar_system':
-        // Panoramic view framing the Sun, Moon globe, and all 9 celestial bodies
-        m.targetLookAt.set(18, 62, -88);
-        m.rotationX = 0.32;
-        m.rotationY = 0.05;
-        m.targetDistance = 280;
+        // Panoramic view framing the central Sun, all 9 planets in their elliptical orbits, and the Moon
+        m.targetLookAt.copy(SOLAR_SYSTEM_CENTER);
+        m.rotationX = 0.45;
+        m.rotationY = 0.35;
+        m.targetDistance = 1650;
         break;
+      case 'inner_planets':
+        // Closer framing for Sun, Mercury, Venus, Earth, Mars
+        m.targetLookAt.copy(SOLAR_SYSTEM_CENTER);
+        m.rotationX = 0.42;
+        m.rotationY = 0.38;
+        m.targetDistance = 540;
+        break;
+      case 'outer_planets':
+        // Framing outer solar system: Jupiter, Saturn, Uranus, Neptune, Pluto
+        m.targetLookAt.set(SOLAR_SYSTEM_CENTER.x + 160, SOLAR_SYSTEM_CENTER.y, SOLAR_SYSTEM_CENTER.z + 160);
+        m.rotationX = 0.40;
+        m.rotationY = 0.45;
+        m.targetDistance = 1100;
+        break;
+      case 'planet_focus':
+      case 'mercury':
+      case 'venus':
+      case 'earth':
+      case 'mars':
+      case 'jupiter':
+      case 'saturn':
+      case 'uranus':
+      case 'neptune':
+      case 'pluto': {
+        const targetId = view === 'planet_focus' ? (selectedPlanet?.id || 'saturn') : view;
+        const targetPlanet = planetaryMeshesRef.current.find(item => item.id === targetId);
+        if (targetPlanet && targetPlanet.translationGroup) {
+          const worldPos = new THREE.Vector3();
+          targetPlanet.translationGroup.getWorldPosition(worldPos);
+          m.targetLookAt.copy(worldPos);
+          m.targetDistance = (CELESTIAL_VISUAL_SCALES[targetId as CelestialBodyId]?.renderedRadius || 25) * 3.2;
+        } else {
+          m.targetLookAt.copy(SOLAR_SYSTEM_CENTER);
+          m.targetDistance = 120;
+        }
+        m.rotationX = 0.48;
+        m.rotationY = 0.20;
+        break;
+      }
       case 'sun':
-        m.targetLookAt.set(-165, 85, -60);
+        m.targetLookAt.copy(SOLAR_SYSTEM_CENTER);
         m.rotationX = 0.38;
         m.rotationY = 1.95;
-        m.targetDistance = 85;
-        break;
-      case 'mercury':
-        m.targetLookAt.set(-125, 68, -75);
-        m.rotationX = 0.45;
-        m.rotationY = 2.0;
-        m.targetDistance = 32;
-        break;
-      case 'venus':
-        m.targetLookAt.set(-98, 72, -95);
-        m.rotationX = 0.48;
-        m.rotationY = 1.85;
-        m.targetDistance = 38;
-        break;
-      case 'earth':
-        m.targetLookAt.set(-68, 76, -112);
-        m.rotationX = 0.50;
-        m.rotationY = 1.65;
-        m.targetDistance = 42;
-        break;
-      case 'mars':
-        m.targetLookAt.set(-32, 78, -125);
-        m.rotationX = 0.52;
-        m.rotationY = 1.25;
-        m.targetDistance = 36;
-        break;
-      case 'jupiter':
-        m.targetLookAt.set(18, 80, -135);
-        m.rotationX = 0.52;
-        m.rotationY = 0.1;
-        m.targetDistance = 75;
-        break;
-      case 'saturn':
-        m.targetLookAt.set(72, 76, -125);
-        m.rotationX = 0.52;
-        m.rotationY = -0.85;
-        m.targetDistance = 68;
-        break;
-      case 'uranus':
-        m.targetLookAt.set(118, 70, -105);
-        m.rotationX = 0.48;
-        m.rotationY = -1.55;
-        m.targetDistance = 48;
-        break;
-      case 'neptune':
-        m.targetLookAt.set(154, 64, -85);
-        m.rotationX = 0.45;
-        m.rotationY = -1.85;
-        m.targetDistance = 46;
-        break;
-      case 'pluto':
-        m.targetLookAt.set(182, 58, -65);
-        m.rotationX = 0.42;
-        m.rotationY = -2.05;
-        m.targetDistance = 28;
+        m.targetDistance = 120;
         break;
       case 'habitat':
         m.targetLookAt.set(0, 3, 0);
@@ -2410,7 +2524,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           <button
             onClick={() => setPresetView('lunar_surface')}
             title="Lunar Surface Close View (Astronauts, Habitat & Rover on Curved Horizon)"
-            className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
               cameraView === 'lunar_surface' || cameraView === 'orbital'
                 ? 'bg-sky-500 text-slate-950 shadow-md'
                 : 'bg-slate-900 text-sky-400 hover:text-white hover:bg-slate-800 border border-sky-500/30'
@@ -2422,7 +2536,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           <button
             onClick={() => setPresetView('moon_globe')}
             title="Complete Spherical Moon Globe View"
-            className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
               cameraView === 'moon_globe'
                 ? 'bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 shadow-md'
                 : 'bg-slate-900 text-cyan-300 hover:text-white hover:bg-slate-800 border border-cyan-500/30'
@@ -2435,7 +2549,7 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           <button
             onClick={() => setPresetView('solar_system')}
             title="Panoramic Solar System View (Sun, Moon Globe, and all 9 Planets)"
-            className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
               cameraView === 'solar_system'
                 ? 'bg-gradient-to-r from-amber-400 to-indigo-500 text-slate-950 shadow-md'
                 : 'bg-slate-900 text-amber-300 hover:text-white hover:bg-slate-800 border border-amber-500/30'
@@ -2443,6 +2557,46 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
           >
             <Sparkles className="w-3 h-3 shrink-0" />
             <span>Solar System</span>
+          </button>
+
+          <button
+            onClick={() => setPresetView('inner_planets')}
+            title="Inner Planets View (Mercury through Mars & Sun)"
+            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+              cameraView === 'inner_planets'
+                ? 'bg-amber-400 text-slate-950 shadow-md'
+                : 'bg-slate-900 text-amber-400 hover:text-white hover:bg-slate-800 border border-amber-500/30'
+            }`}
+          >
+            <span>Inner</span>
+          </button>
+
+          <button
+            onClick={() => setPresetView('outer_planets')}
+            title="Outer Planets View (Jupiter, Saturn, Uranus, Neptune, Pluto)"
+            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+              cameraView === 'outer_planets'
+                ? 'bg-indigo-400 text-slate-950 shadow-md'
+                : 'bg-slate-900 text-indigo-400 hover:text-white hover:bg-slate-800 border border-indigo-500/30'
+            }`}
+          >
+            <span>Outer</span>
+          </button>
+
+          <button
+            onClick={() => {
+              const focusId = selectedPlanet?.id || 'saturn';
+              setSelectedPlanet(CELESTIAL_BODIES[focusId]);
+              setPresetView('planet_focus');
+            }}
+            title="Planet Focus View (Track Selected Planet)"
+            className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition ${
+              cameraView === 'planet_focus'
+                ? 'bg-pink-500 text-slate-950 shadow-md'
+                : 'bg-slate-900 text-pink-400 hover:text-white hover:bg-slate-800 border border-pink-500/30'
+            }`}
+          >
+            <span>Focus</span>
           </button>
         </div>
 
@@ -2523,6 +2677,25 @@ export const OutpostScene3D: React.FC<OutpostScene3DProps> = ({
         >
           <Film className="w-4 h-4" />
           <span className="hidden xl:inline text-[9px] font-bold">{isCinematicTour ? 'TOUR: ON' : 'TOUR'}</span>
+        </button>
+
+        {/* Toggle Orbital Simulation Pause / Resume */}
+        <button
+          onClick={() => {
+            const next = !isSimulationPaused;
+            setIsSimulationPaused(next);
+            isSimulationPausedRef.current = next;
+            audioSystem.playClick();
+          }}
+          title={isSimulationPaused ? 'Resume Orbital Revolution & Spin' : 'Pause Orbital Revolution & Spin'}
+          className={`p-1.5 rounded-lg transition flex items-center gap-1 ${
+            isSimulationPaused
+              ? 'bg-amber-950/90 text-amber-300 border border-amber-600/70 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          {isSimulationPaused ? <Play className="w-4 h-4 text-amber-400" /> : <Pause className="w-4 h-4 text-emerald-400" />}
+          <span className="hidden xl:inline text-[9px] font-bold">{isSimulationPaused ? 'ORBIT: PAUSED' : 'ORBIT: ACTIVE'}</span>
         </button>
 
         {/* Reset Camera Orbit */}

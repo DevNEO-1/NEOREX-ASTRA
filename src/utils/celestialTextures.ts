@@ -314,6 +314,68 @@ export function getSaturnRingTexture(): THREE.CanvasTexture {
 }
 
 /**
+ * Creates procedural Jupiter faint dusty ring texture.
+ * Scientifically inspired by NASA Voyager and Galileo observations of microscopic silicate dust.
+ */
+export function getJupiterRingTexture(): THREE.CanvasTexture {
+  if (textureCache.has('jupiterRing')) return textureCache.get('jupiterRing')!;
+
+  const width = 256;
+  const height = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, width, 0);
+    grad.addColorStop(0.0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.25, 'rgba(180, 150, 120, 0.08)');
+    grad.addColorStop(0.60, 'rgba(215, 185, 145, 0.35)'); // Main ring core
+    grad.addColorStop(0.85, 'rgba(165, 135, 105, 0.08)');
+    grad.addColorStop(1.0, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set('jupiterRing', texture);
+  return texture;
+}
+
+/**
+ * Creates procedural Neptune faint ring arcs texture.
+ * Scientifically inspired by NASA Voyager 2 observations of the Adams and Le Verrier rings with discrete arcs.
+ */
+export function getNeptuneRingTexture(): THREE.CanvasTexture {
+  if (textureCache.has('neptuneRing')) return textureCache.get('neptuneRing')!;
+
+  const width = 256;
+  const height = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, width, 0);
+    grad.addColorStop(0.0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.30, 'rgba(147, 197, 253, 0.08)');
+    grad.addColorStop(0.65, 'rgba(186, 230, 253, 0.40)'); // Prominent arc band
+    grad.addColorStop(0.88, 'rgba(96, 165, 250, 0.06)');
+    grad.addColorStop(1.0, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set('neptuneRing', texture);
+  return texture;
+}
+
+/**
  * Creates procedural high-detail full 360-degree Moon surface texture.
  * Features realistic basaltic maria (Tranquillitatis, Serenitatis, Imbrium, Procellarum, Crisium),
  * bright anorthosite highlands, and iconic impact craters with radial ejecta rays (Tycho, Copernicus, Kepler).

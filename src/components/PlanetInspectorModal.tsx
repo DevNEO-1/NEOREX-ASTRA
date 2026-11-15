@@ -112,6 +112,16 @@ export const PlanetInspectorModal: React.FC<PlanetInspectorModalProps> = ({
 
           <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5">
             <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
+              <Orbit className="w-3 h-3 text-sky-400" />
+              <span>Orbital Period</span>
+            </div>
+            <div className="text-xs font-bold text-sky-300 mt-0.5 truncate" title={planet.orbitalPeriod}>
+              {planet.orbitalPeriod}
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5">
+            <div className="text-[10px] font-mono text-slate-400 uppercase flex items-center gap-1">
               <Thermometer className="w-3 h-3 text-slate-400" />
               <span>Temperature</span>
             </div>

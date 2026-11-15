@@ -727,4 +727,237 @@ describe('NEOREX ASTRA — 3D Immersive Environment Verification', () => {
       expect(scene.children.length).toBe(0);
     });
   });
+
+  describe('5. Keplerian Orbital Simulation, Planetary Rings & Interactive Telemetry Verification', () => {
+    it('verifies all required 9 planets have comprehensive orbital configurations', async () => {
+      const { PLANET_ORBITS } = await import('../src/data/celestialBodies');
+      const requiredPlanets = [
+        'mercury',
+        'venus',
+        'earth',
+        'mars',
+        'jupiter',
+        'saturn',
+        'uranus',
+        'neptune',
+        'pluto',
+      ] as const;
+
+      requiredPlanets.forEach((planetId) => {
+        const config = PLANET_ORBITS[planetId];
+        expect(config, `Missing orbit config for ${planetId}`).toBeDefined();
+        expect(config.id).toBe(planetId);
+        expect(config.name).toBeTruthy();
+        expect(config.order).toBeGreaterThanOrEqual(1);
+        expect(config.orbitalRadius).toBeGreaterThan(0);
+        expect(config.eccentricity).toBeGreaterThanOrEqual(0);
+        expect(config.eccentricity).toBeLessThan(1.0); // Bound ellipse
+        expect(config.inclinationDeg).toBeGreaterThanOrEqual(0);
+        expect(config.orbitalSpeed).toBeGreaterThan(0);
+        expect(typeof config.initialPhase).toBe('number');
+        expect(typeof config.axialTiltDeg).toBe('number');
+        expect(typeof config.isRetrograde).toBe('boolean');
+        expect(typeof config.rotationSpeed).toBe('number');
+      });
+    });
+
+    it('verifies each orbital radius is strictly greater than the previous planet with large visible gaps', async () => {
+      const { PLANET_ORBITS } = await import('../src/data/celestialBodies');
+      const orderedPlanets = [
+        PLANET_ORBITS.mercury,
+        PLANET_ORBITS.venus,
+        PLANET_ORBITS.earth,
+        PLANET_ORBITS.mars,
+        PLANET_ORBITS.jupiter,
+        PLANET_ORBITS.saturn,
+        PLANET_ORBITS.uranus,
+        PLANET_ORBITS.neptune,
+        PLANET_ORBITS.pluto,
+      ];
+
+      for (let i = 1; i < orderedPlanets.length; i++) {
+        const prev = orderedPlanets[i - 1];
+        const curr = orderedPlanets[i];
+        
+        // Strictly increasing semi-major axis
+        expect(curr.orbitalRadius).toBeGreaterThan(prev.orbitalRadius);
+        
+        // Large visible educational gap between neighboring orbits
+        const gap = curr.orbitalRadius - prev.orbitalRadius;
+        expect(gap).toBeGreaterThanOrEqual(40);
+      }
+
+      // Keplerian speed ordering: closer planets travel faster along their orbits
+      expect(PLANET_ORBITS.mercury.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.venus.orbitalSpeed);
+      expect(PLANET_ORBITS.venus.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.earth.orbitalSpeed);
+      expect(PLANET_ORBITS.earth.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.mars.orbitalSpeed);
+      expect(PLANET_ORBITS.mars.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.jupiter.orbitalSpeed);
+      expect(PLANET_ORBITS.jupiter.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.saturn.orbitalSpeed);
+      expect(PLANET_ORBITS.saturn.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.uranus.orbitalSpeed);
+      expect(PLANET_ORBITS.uranus.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.neptune.orbitalSpeed);
+      expect(PLANET_ORBITS.neptune.orbitalSpeed).toBeGreaterThan(PLANET_ORBITS.pluto.orbitalSpeed);
+    });
+
+    it('verifies orbital paths and 3D trajectory points are correctly generated', async () => {
+      const { PLANET_ORBITS, generateOrbitPoints, calculateOrbitalPosition } = await import('../src/data/celestialBodies');
+
+      // Test Mars inclined elliptical orbit
+      const marsConfig = PLANET_ORBITS.mars;
+      const segments = 64;
+      const points = generateOrbitPoints(marsConfig, segments);
+
+      // Must generate closed loop with segments + 1 points
+      expect(points.length).toBe(segments + 1);
+
+      // Start point and end point must coincide for a closed orbital loop
+      expect(points[0].x).toBeCloseTo(points[segments].x, 3);
+      expect(points[0].y).toBeCloseTo(points[segments].y, 3);
+      expect(points[0].z).toBeCloseTo(points[segments].z, 3);
+
+      // Test bounds: distance to focus lies within [a(1-e), a(1+e)]
+      const a = marsConfig.orbitalRadius;
+      const e = marsConfig.eccentricity;
+      const perihelion = a * (1 - e);
+      const aphelion = a * (1 + e);
+
+      points.forEach((pt) => {
+        const dist = Math.sqrt(pt.x * pt.x + pt.y * pt.y + pt.z * pt.z);
+        expect(dist).toBeGreaterThanOrEqual(perihelion - 0.05);
+        expect(dist).toBeLessThanOrEqual(aphelion + 0.05);
+      });
+
+      // Test calculateOrbitalPosition at t = 0 matches start position
+      const pos0 = calculateOrbitalPosition(marsConfig, 0);
+      expect(typeof pos0.x).toBe('number');
+      expect(typeof pos0.y).toBe('number');
+      expect(typeof pos0.z).toBe('number');
+      expect(Number.isFinite(pos0.x)).toBe(true);
+      expect(Number.isFinite(pos0.y)).toBe(true);
+      expect(Number.isFinite(pos0.z)).toBe(true);
+
+      // Test full revolution after T = 2*PI / omega
+      const orbitalPeriodSec = (Math.PI * 2) / marsConfig.orbitalSpeed;
+      const posPeriod = calculateOrbitalPosition(marsConfig, orbitalPeriodSec);
+      expect(posPeriod.x).toBeCloseTo(pos0.x, 2);
+      expect(posPeriod.y).toBeCloseTo(pos0.y, 2);
+      expect(posPeriod.z).toBeCloseTo(pos0.z, 2);
+    });
+
+    it('verifies planet self-rotation is decoupled and independent of orbital translation', async () => {
+      const { PLANET_ORBITS, calculateOrbitalPosition } = await import('../src/data/celestialBodies');
+      const earth = PLANET_ORBITS.earth;
+
+      // Position changes based on orbital speed (0.14 rad/s)
+      const posT1 = calculateOrbitalPosition(earth, 1.0);
+      const posT2 = calculateOrbitalPosition(earth, 2.0);
+      expect(posT1.x).not.toBe(posT2.x);
+
+      // Self-rotation angle advances according to rotationSpeed (0.024 rad/s)
+      const spinAngle1 = 1.0 * earth.rotationSpeed;
+      const spinAngle2 = 2.0 * earth.rotationSpeed;
+      expect(spinAngle2 - spinAngle1).toBeCloseTo(earth.rotationSpeed, 5);
+
+      // Retrograde rotation directions
+      expect(PLANET_ORBITS.venus.isRetrograde).toBe(true);
+      expect(PLANET_ORBITS.venus.rotationSpeed).toBeLessThan(0);
+      expect(PLANET_ORBITS.uranus.isRetrograde).toBe(true);
+      expect(PLANET_ORBITS.uranus.rotationSpeed).toBeLessThan(0);
+      expect(PLANET_ORBITS.pluto.isRetrograde).toBe(true);
+      expect(PLANET_ORBITS.pluto.rotationSpeed).toBeLessThan(0);
+
+      // Prograde rotation
+      expect(PLANET_ORBITS.earth.isRetrograde).toBe(false);
+      expect(PLANET_ORBITS.earth.rotationSpeed).toBeGreaterThan(0);
+    });
+
+    it('verifies ring systems exist strictly and only for Jupiter, Saturn, Uranus, and Neptune', async () => {
+      const { PLANET_ORBITS } = await import('../src/data/celestialBodies');
+
+      // Ringed gas and ice giants
+      expect(PLANET_ORBITS.jupiter.ringSystem).toBeDefined();
+      expect(PLANET_ORBITS.jupiter.ringSystem?.ringType).toBe('dust');
+      expect(PLANET_ORBITS.jupiter.ringSystem?.opacity).toBeLessThan(0.35); // Very faint
+
+      expect(PLANET_ORBITS.saturn.ringSystem).toBeDefined();
+      expect(PLANET_ORBITS.saturn.ringSystem?.ringType).toBe('layered');
+      expect(PLANET_ORBITS.saturn.ringSystem?.outerRadiusMultiplier).toBeGreaterThan(2.0); // Prominent
+
+      expect(PLANET_ORBITS.uranus.ringSystem).toBeDefined();
+      expect(PLANET_ORBITS.uranus.ringSystem?.ringType).toBe('vertical');
+
+      expect(PLANET_ORBITS.neptune.ringSystem).toBeDefined();
+      expect(PLANET_ORBITS.neptune.ringSystem?.ringType).toBe('arcs');
+
+      // Planets without ring systems
+      expect(PLANET_ORBITS.mercury.ringSystem).toBeUndefined();
+      expect(PLANET_ORBITS.venus.ringSystem).toBeUndefined();
+      expect(PLANET_ORBITS.earth.ringSystem).toBeUndefined();
+      expect(PLANET_ORBITS.mars.ringSystem).toBeUndefined();
+      expect(PLANET_ORBITS.pluto.ringSystem).toBeUndefined();
+    });
+
+    it('verifies pausing stops simulation clock and resuming smoothly continues animation', async () => {
+      const { updateSimulationClock, PLANET_ORBITS, calculateOrbitalPosition } = await import('../src/data/celestialBodies');
+      const saturn = PLANET_ORBITS.saturn;
+
+      let simTime = 10.0;
+      const initialPos = calculateOrbitalPosition(saturn, simTime);
+
+      // 1. Advance while active
+      simTime = updateSimulationClock(simTime, 1.0, false, 1.0);
+      expect(simTime).toBe(11.0);
+      const activePos = calculateOrbitalPosition(saturn, simTime);
+      expect(activePos.x).not.toBe(initialPos.x);
+
+      // 2. Pause simulation: simTime remains frozen across elapsed frames
+      const frozenTime = updateSimulationClock(simTime, 0.5, true, 1.0);
+      expect(frozenTime).toBe(11.0);
+      const pausedPos = calculateOrbitalPosition(saturn, frozenTime);
+      expect(pausedPos.x).toBe(activePos.x);
+      expect(pausedPos.y).toBe(activePos.y);
+      expect(pausedPos.z).toBe(activePos.z);
+
+      // 3. Resume simulation: advances from frozen point
+      const resumedTime = updateSimulationClock(frozenTime, 0.5, false, 1.0);
+      expect(resumedTime).toBe(11.5);
+      const resumedPos = calculateOrbitalPosition(saturn, resumedTime);
+      expect(resumedPos.x).not.toBe(pausedPos.x);
+    });
+
+    it('verifies planet inspector telemetry interaction continues working with complete metadata and Pluto identified as dwarf planet', async () => {
+      const { CELESTIAL_BODIES } = await import('../src/data/celestialBodies');
+
+      const allPlanets = [
+        'mercury',
+        'venus',
+        'earth',
+        'moon',
+        'mars',
+        'jupiter',
+        'saturn',
+        'uranus',
+        'neptune',
+        'pluto',
+        'sun',
+      ] as const;
+
+      allPlanets.forEach((bodyId) => {
+        const body = CELESTIAL_BODIES[bodyId];
+        expect(body, `Missing telemetry for ${bodyId}`).toBeDefined();
+        expect(body.name).toBeTruthy();
+        expect(body.diameterKm).toBeTruthy();
+        expect(body.gravityMps2).toBeTruthy();
+        expect(body.dayLength).toBeTruthy();
+        expect(body.orbitalPeriod).toBeTruthy();
+        expect(body.distanceFromSun).toBeTruthy();
+        expect(body.nasaFacts.length).toBeGreaterThan(0);
+      });
+
+      // Pluto must be explicitly identified as a dwarf planet
+      const pluto = CELESTIAL_BODIES.pluto;
+      expect(pluto.name).toContain('Dwarf Planet');
+      expect(pluto.category.toLowerCase()).toContain('dwarf planet');
+      expect(pluto.nasaFacts.some(f => f.toLowerCase().includes('dwarf planet'))).toBe(true);
+    });
+  });
 });
